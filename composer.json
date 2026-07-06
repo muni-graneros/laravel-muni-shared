@@ -1,0 +1,42 @@
+{
+    "name": "muni-graneros/laravel-muni-shared",
+    "description": "Código compartido del ecosistema municipal de Graneros (geocoding, y más adelante resolvers de personas y notificaciones).",
+    "type": "library",
+    "license": "proprietary",
+    "keywords": ["laravel", "graneros", "municipal"],
+    "require": {
+        "php": "^8.3",
+        "illuminate/support": "^11.0|^12.0",
+        "illuminate/http": "^11.0|^12.0"
+    },
+    "require-dev": {
+        "orchestra/testbench": "^9.0|^10.0",
+        "laravel/pint": "^1.18",
+        "pestphp/pest": "^3.0"
+    },
+    "autoload": {
+        "psr-4": {
+            "Muni\\Shared\\": "src/"
+        }
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Muni\\Shared\\Tests\\": "tests/"
+        }
+    },
+    "extra": {
+        "laravel": {
+            "providers": [
+                "Muni\\Shared\\MuniSharedServiceProvider"
+            ]
+        }
+    },
+    "minimum-stability": "stable",
+    "prefer-stable": true,
+    "config": {
+        "sort-packages": true,
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        }
+    }
+}
