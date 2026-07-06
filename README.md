@@ -8,8 +8,12 @@ bug N veces. Ver Frente 22 del ROADMAP de `plataforma-graneros`.
 
 | Clase | Namespace | Estado |
 |---|---|---|
-| `Geocoder` | `Muni\Shared\Geocoder` | ✅ extraída (autocontenida: solo facades de Laravel) |
-| `MfaCodeNotification` | — | ⏳ acoplada a `SystemNotification`; extraer tras normalizar |
+| `Geocoder` | `Muni\Shared\Geocoder` | ✅ extraída (geocoding OSM, autocontenida) |
+| `Coordenadas` | `Muni\Shared\Coordenadas` | ✅ extraída (parser lat/lng, autocontenida) |
+| `RutHelper` | `Muni\Shared\RutHelper` | ✅ extraída (limpia/valida/formatea RUT chileno) |
+| `RutValido` | `Muni\Shared\RutValido` | ✅ extraída (regla de validación Laravel, usa RutHelper) |
+| `SystemNotification` | `Muni\Shared\SystemNotification` | ✅ extraída (base de notificaciones mail) |
+| `MfaCodeNotification` | `Muni\Shared\MfaCodeNotification` | ✅ extraída (código MFA por correo, usa SystemNotification) |
 | `ApiPersonaResolver` / `PersonaResolverConRespaldo` | — | ⏳ dependen de `PersonaDTO`/`PersonaResolverInterface` que **difieren** entre repos → normalizar contrato primero |
 
 ## Instalación (repositorio privado por VCS)
