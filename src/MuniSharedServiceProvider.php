@@ -3,14 +3,14 @@
 namespace Muni\Shared;
 
 use Illuminate\Support\ServiceProvider;
+use Muni\Shared\Console\MuniDocsCommand;
 
 /**
  * Service provider del paquete compartido del ecosistema municipal.
  *
- * Hoy el paquete solo expone helpers estáticos (Geocoder), que no requieren
- * registro. Este provider queda como punto de enganche para cuando se muevan
- * aquí los bindings de dominio (p.ej. PersonaResolverInterface) tras normalizar
- * el DTO/contrato entre los sistemas consumidores.
+ * Expone helpers estáticos (Geocoder, RutHelper, SsoClaims…) y el comando
+ * `muni:docs`, que genera la documentación técnica de CUALQUIER sistema del
+ * ecosistema por introspección (BD, ER, estados, grafo de código, funcionalidades).
  */
 class MuniSharedServiceProvider extends ServiceProvider
 {
@@ -21,6 +21,8 @@ class MuniSharedServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // Publicables/config compartida futura.
+        if ($this->app->runningInConsole()) {
+            $this->commands([MuniDocsCommand::class]);
+        }
     }
 }
