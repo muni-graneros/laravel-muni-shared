@@ -68,9 +68,27 @@ abstract class SincronizarAlMaestro implements ShouldQueue
     /** Gancho opcional para reaccionar a la respuesta del maestro. */
     protected function despuesDeSincronizar(object $registro, mixed $respuesta): void {}
 
+    /**
+     * Prefijo de config del maestro. Por defecto el del ecosistema
+     * (`services.personas_api`); licencias, por ejemplo, usa el suyo.
+     */
+    protected function configPrefix(): string
+    {
+        return 'services.personas_api';
+    }
+
+    /**
+     * ¿Hay maestro configurado? Se sobrescribe cuando el sistema usa otra
+     * convención (un flag `enabled` en vez de `driver`, por ejemplo).
+     */
+    protected function maestroHabilitado(): bool
+    {
+        return config($this->configPrefix().'.driver') === 'http';
+    }
+
     public function handle(): void
     {
-        if (config('services.personas_api.driver') !== 'http') {
+        if (! $this->maestroHabilitado()) {
             return; // sin maestro configurado (tests / instalación aislada)
         }
 
@@ -79,17 +97,17 @@ abstract class SincronizarAlMaestro implements ShouldQueue
             return;
         }
 
-        $resp = Http::withToken((string) config('services.personas_api.token'))
+        $resp = Http::withToken((string) config($this->configPrefix().'.token'))
             ->withHeaders(array_filter([
-                'X-Sistema' => (string) config('services.personas_api.sistema', $this->sistema()),
+                'X-Sistema' => (string) config($this->configPrefix().'.sistema', $this->sistema()),
                 // Atribución del funcionario que originó el cambio (auditoría del maestro).
                 'X-Actor-Email' => $this->actorEmail,
                 'X-Actor-Nombre' => $this->actorNombre,
             ]))
             ->acceptJson()
-            ->timeout((int) config('services.personas_api.timeout', 5))
+            ->timeout((int) config($this->configPrefix().'.timeout', 5))
             ->post(
-                rtrim((string) config('services.personas_api.url'), '/').'/api/servicios/v1/personas',
+                rtrim((string) config($this->configPrefix().'.url'), '/').'/api/servicios/v1/personas',
                 $this->payload($registro),
             );
 

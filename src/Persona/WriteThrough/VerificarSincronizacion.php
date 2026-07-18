@@ -36,9 +36,21 @@ abstract class VerificarSincronizacion extends Command
     /** Envía el aviso a los administradores del sistema. */
     abstract protected function avisarAdmins(int $total): void;
 
+    /** Prefijo de config del maestro (ver SincronizarAlMaestro::configPrefix). */
+    protected function configPrefix(): string
+    {
+        return 'services.personas_api';
+    }
+
+    /** ¿Hay maestro configurado? Se sobrescribe si el sistema usa otra convención. */
+    protected function maestroHabilitado(): bool
+    {
+        return config($this->configPrefix().'.driver') === 'http';
+    }
+
     public function handle(): int
     {
-        if (config('services.personas_api.driver') !== 'http') {
+        if (! $this->maestroHabilitado()) {
             $this->info('Maestro no configurado: nada que verificar.');
 
             return self::SUCCESS;

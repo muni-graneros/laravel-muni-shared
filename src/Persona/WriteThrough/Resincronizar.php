@@ -25,9 +25,21 @@ abstract class Resincronizar extends Command
     /** Despacha el job de write-through para un registro. */
     abstract protected function despachar(object $registro): void;
 
+    /** Prefijo de config del maestro (ver SincronizarAlMaestro::configPrefix). */
+    protected function configPrefix(): string
+    {
+        return 'services.personas_api';
+    }
+
+    /** ¿Hay maestro configurado? Se sobrescribe si el sistema usa otra convención. */
+    protected function maestroHabilitado(): bool
+    {
+        return config($this->configPrefix().'.driver') === 'http';
+    }
+
     public function handle(): int
     {
-        if (config('services.personas_api.driver') !== 'http') {
+        if (! $this->maestroHabilitado()) {
             $this->info('Maestro no configurado: nada que resincronizar.');
 
             return self::SUCCESS;
