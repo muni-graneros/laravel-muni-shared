@@ -138,7 +138,11 @@ class KeycloakSsoController
     public function callback(Request $request): \Symfony\Component\HttpFoundation\Response
     {
         abort_unless(config('services.keycloak.enabled'), 404);
-        abort_unless($request->query('state') === $request->session()->pull('sso_state'), 403, 'Estado inválido.');
+        abort_unless(
+            $this->stateValido($request->query('state'), $request->session()->pull('sso_state')),
+            403,
+            'Estado inválido.'
+        );
 
         $silent = (bool) $request->session()->pull('sso_silent');
 
@@ -271,6 +275,32 @@ class KeycloakSsoController
         $destino = $user->homePath();
 
         return $esPopup ? $this->cerrarPopup($destino) : redirect()->intended($destino);
+    }
+
+    /**
+     * ¿El `state` del callback corresponde al flujo que ESTE navegador inició?
+     *
+     * Comparar con `===` a secas era evitable: si la víctima nunca inició el flujo,
+     * la sesión no tiene `sso_state` y `pull()` devuelve null; si el atacante omite
+     * el parámetro, `query('state')` también es null → `null === null` daba por
+     * válido el callback (login CSRF: se podía forzar el navegador de la víctima a
+     * `/auth/sso/callback?code=<código del atacante>` y dejarla dentro de la cuenta
+     * del ATACANTE, con todo lo que subiera después guardado ahí).
+     *
+     * Por eso se exige que AMBOS sean strings no vacíos antes de compararlos, y la
+     * comparación se hace en tiempo constante.
+     */
+    protected function stateValido(mixed $enviado, mixed $enSesion): bool
+    {
+        if (! is_string($enviado) || ! is_string($enSesion)) {
+            return false;
+        }
+
+        if ($enviado === '' || $enSesion === '') {
+            return false;
+        }
+
+        return hash_equals($enSesion, $enviado);
     }
 
     /**

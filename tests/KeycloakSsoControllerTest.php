@@ -76,3 +76,41 @@ it('publicBaseFrom se resuelve sobre la subclase (new static, no new self)', fun
     expect($subclase::publicBaseFrom(Request::create('http://localhost/')))
         ->toBe('https://sobrescrito.test');
 });
+
+/**
+ * Login CSRF: el `state` es lo único que ata el callback al flujo que ESTE navegador
+ * inició. Si un callback sin `state` pasa la comprobación, un atacante puede forzar
+ * el navegador de la víctima a /auth/sso/callback?code=<código del atacante> y dejarla
+ * con la sesión del ATACANTE iniciada; todo lo que la víctima haga después (subir
+ * documentos, crear solicitudes) queda en la cuenta del atacante.
+ */
+it('la comparación de state no acepta nulos ni vacíos', function (mixed $enviado, mixed $enSesion) {
+    $controller = new class extends KeycloakSsoController
+    {
+        public function comparar(mixed $enviado, mixed $enSesion): bool
+        {
+            return $this->stateValido($enviado, $enSesion);
+        }
+    };
+
+    expect($controller->comparar($enviado, $enSesion))->toBeFalse();
+})->with([
+    'ambos nulos (el bypass)' => [null, null],
+    'ambos vacíos' => ['', ''],
+    'sesión vacía' => ['abc', ''],
+    'sesión nula' => ['abc', null],
+    'enviado nulo' => [null, 'abc'],
+    'enviado array' => [['abc'], 'abc'],
+]);
+
+it('acepta el state legítimo', function () {
+    $controller = new class extends KeycloakSsoController
+    {
+        public function comparar(mixed $enviado, mixed $enSesion): bool
+        {
+            return $this->stateValido($enviado, $enSesion);
+        }
+    };
+
+    expect($controller->comparar('token-de-estado-largo', 'token-de-estado-largo'))->toBeTrue();
+});
