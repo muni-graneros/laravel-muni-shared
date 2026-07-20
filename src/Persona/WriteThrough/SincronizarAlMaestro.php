@@ -4,6 +4,7 @@ namespace Muni\Shared\Persona\WriteThrough;
 
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
@@ -50,7 +51,7 @@ abstract class SincronizarAlMaestro implements ShouldQueue
     }
 
     /** El registro local a empujar. Devolver null si ya no existe (se descarta). */
-    abstract protected function registro(): ?object;
+    abstract protected function registro(): ?Model;
 
     /**
      * Mapeo del registro local al payload del maestro.
@@ -66,7 +67,7 @@ abstract class SincronizarAlMaestro implements ShouldQueue
     abstract protected function sistema(): string;
 
     /** Gancho opcional para reaccionar a la respuesta del maestro. */
-    protected function despuesDeSincronizar(object $registro, mixed $respuesta): void {}
+    protected function despuesDeSincronizar(Model $registro, mixed $respuesta): void {}
 
     /**
      * Prefijo de config del maestro. Por defecto el del ecosistema
