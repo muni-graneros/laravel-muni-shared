@@ -4,6 +4,7 @@ namespace Muni\Shared\Persona\WriteThrough;
 
 use Illuminate\Console\Command;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Log;
 
 /**
@@ -23,7 +24,7 @@ abstract class Resincronizar extends Command
     abstract protected function sustantivo(): string;
 
     /** Despacha el job de write-through para un registro. */
-    abstract protected function despachar(object $registro): void;
+    abstract protected function despachar(Model $registro): void;
 
     /** Prefijo de config del maestro (ver SincronizarAlMaestro::configPrefix). */
     protected function configPrefix(): string
