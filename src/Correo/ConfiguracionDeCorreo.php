@@ -79,6 +79,20 @@ final class ConfiguracionDeCorreo
      */
     public static function problemas(string $modo, string $remitente): array
     {
+        if ($modo === 'sin-envio') {
+            return [];
+        }
+
+        // La entrega directa por el puerto 25 solo entrega a casillas del propio
+        // dominio, y su certificado tampoco valida desde Linux. Es un modo que
+        // no funciona: sin este aviso, la pantalla de salud diría «bien» en un
+        // sistema que no puede entregar nada, que es peor que no revisarlo.
+        if ($modo === 'entrega-directa') {
+            return ['El envío está en entrega directa por SMTP, que solo llega a casillas '
+                .'del propio dominio y cuyo certificado no valida desde Linux. '
+                .'Corresponde MAIL_MAILER=graph.'];
+        }
+
         if ($modo !== 'graph') {
             return [];
         }

@@ -249,3 +249,16 @@ describe('el comando correo:probar', function () {
         $this->artisan('correo:probar')->expectsOutputToContain('Vence en 12 días');
     });
 });
+
+describe('modos que no sirven', function () {
+    it('avisa que la entrega directa no puede entregar', function () {
+        // Sin este aviso, un sistema con MAIL_MAILER=smtp y sin credenciales
+        // pasaría la revisión de salud en verde sin poder mandar nada.
+        expect(ConfiguracionDeCorreo::problemas('entrega-directa', 'no-reply@municipalidadgraneros.cl'))
+            ->not->toBeEmpty();
+    });
+
+    it('no reclama nada si el correo se está escribiendo en un archivo', function () {
+        expect(ConfiguracionDeCorreo::problemas('sin-envio', 'lo-que-sea@ejemplo.cl'))->toBeEmpty();
+    });
+});
