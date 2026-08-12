@@ -9,7 +9,6 @@
         "municipal"
     ],
     "require": {
-        "php": "^8.3",
         "firebase/php-jwt": "^7.1",
         "illuminate/auth": "^11.0|^12.0|^13.0",
         "illuminate/bus": "^11.0|^12.0|^13.0",
@@ -17,10 +16,13 @@
         "illuminate/console": "^11.0|^12.0|^13.0",
         "illuminate/database": "^11.0|^12.0|^13.0",
         "illuminate/http": "^11.0|^12.0|^13.0",
+        "illuminate/mail": "^11.0|^12.0|^13.0",
         "illuminate/queue": "^11.0|^12.0|^13.0",
         "illuminate/routing": "^11.0|^12.0|^13.0",
         "illuminate/session": "^11.0|^12.0|^13.0",
-        "illuminate/support": "^11.0|^12.0|^13.0"
+        "illuminate/support": "^11.0|^12.0|^13.0",
+        "laravel/prompts": "^0.1.15|^0.2|^0.3",
+        "php": "^8.3"
     },
     "require-dev": {
         "orchestra/testbench": "^9.0|^10.0|^11.0",
