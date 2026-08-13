@@ -10,6 +10,7 @@ use Muni\Shared\Console\ProbarCorreoCommand;
 use Muni\Shared\Correo\TransporteGraph;
 use Muni\Shared\Privacidad\BitacoraEnBaseDeDatos;
 use Muni\Shared\Privacidad\Console\AplicarRetencionCommand;
+use Muni\Shared\Privacidad\Console\ExportarRatCommand;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Contratos\ResuelveTitularesVencidos;
 use Muni\Shared\Privacidad\NingunTitularVencido;
@@ -57,6 +58,10 @@ class MuniSharedServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__.'/../config/privacidad.php' => config_path('privacidad.php'),
             ], 'privacidad-config');
+
+            $this->publishes([
+                __DIR__.'/../stubs/privacidad' => base_path('docs/privacidad'),
+            ], 'privacidad-stubs');
         }
 
         $this->registrarCorreoPorGraph();
@@ -67,6 +72,7 @@ class MuniSharedServiceProvider extends ServiceProvider
                 ProbarCorreoCommand::class,
                 ConfigurarCorreoCommand::class,
                 AplicarRetencionCommand::class,
+                ExportarRatCommand::class,
             ]);
         }
     }

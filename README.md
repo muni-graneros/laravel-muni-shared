@@ -64,3 +64,50 @@ composer install
 ./vendor/bin/pint --test
 ./vendor/bin/pest
 ```
+
+## Módulo Privacidad (Ley 21.719)
+
+Cubre el registro de actividades de tratamiento, el consentimiento por
+finalidad, los derechos ARCOP con control de plazo, la retención con supresión
+efectiva y el registro de brechas.
+
+### Instalar en un sistema
+
+```bash
+composer update muni-graneros/laravel-muni-shared
+php artisan migrate
+php artisan vendor:publish --tag=privacidad-config
+php artisan vendor:publish --tag=privacidad-stubs
+```
+
+En el `.env`:
+
+```
+PRIVACIDAD_SISTEMA=discapacidad
+PRIVACIDAD_PLAZO_RESPUESTA_DIAS=30
+PRIVACIDAD_RESPONSABLE="I. Municipalidad de Graneros"
+PRIVACIDAD_CONTACTO=privacidad@municipalidadgraneros.cl
+PRIVACIDAD_DELEGADO=
+```
+
+### Lo que cada sistema debe aportar
+
+| Contrato | Obligatorio | Qué resuelve |
+|---|---|---|
+| `TitularDeDatos` | Sí | Cómo se exporta, purga y anonimiza a una persona, y qué campos (`camposRectificables()`) puede corregir mediante el derecho de rectificación — no es un cheque en blanco sobre todo el registro |
+| `ResuelveTitularesVencidos` | Solo si hay retención | Desde cuándo se trata a un titular bajo cada finalidad |
+| `VerificadorIdentidad` | Sí | Cómo se acredita que el solicitante es el titular |
+| `PropagaRectificacion` | Solo si es modelo de lectura del maestro | Que la rectificación no la pise la próxima sincronización |
+| `RegistroDeEvidencia` | No | Sustituir la bitácora propia por la del sistema |
+
+Además, cada sistema siembra sus finalidades: es donde declara qué trata, con
+qué base y por cuánto tiempo.
+
+### Comandos
+
+```bash
+php artisan privacidad:rat                        # el RAT en tabla
+php artisan privacidad:rat --json                 # el RAT para adjuntar
+php artisan privacidad:aplicar-retencion          # simulación
+php artisan privacidad:aplicar-retencion --ejecutar
+```
