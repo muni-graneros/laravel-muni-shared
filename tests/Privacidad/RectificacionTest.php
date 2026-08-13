@@ -3,6 +3,7 @@
 use Illuminate\Database\Eloquent\Model;
 use Muni\Shared\Privacidad\Contratos\PropagaRectificacion;
 use Muni\Shared\Privacidad\EstadoDeSolicitud;
+use Muni\Shared\Privacidad\Modelos\EntradaBitacora;
 use Muni\Shared\Privacidad\Rectificaciones;
 use Muni\Shared\Privacidad\RectificacionNoPropagada;
 use Muni\Shared\Privacidad\ResultadoVerificacion;
@@ -37,7 +38,11 @@ it('aplica el cambio local y lo propaga al maestro', function () {
     app(Rectificaciones::class)->aplicar($this->solicitud, ['nombre' => 'Rocío Paredes'], 'Se verifica con cédula.');
 
     expect($this->titular->refresh()->nombre)->toBe('Rocío Paredes')
-        ->and($this->solicitud->refresh()->estado)->toBe(EstadoDeSolicitud::Acogida);
+        ->and($this->solicitud->refresh()->estado)->toBe(EstadoDeSolicitud::Acogida)
+        ->and(EntradaBitacora::where('evento', 'rectificacion.aplicada')->count())->toBe(1)
+        // Solo se guardan los NOMBRES de los campos corregidos, nunca los valores.
+        ->and(EntradaBitacora::where('evento', 'rectificacion.aplicada')->sole()->datos)
+        ->toBe(['solicitud_id' => $this->solicitud->id, 'campos' => ['nombre']]);
 });
 
 it('si el maestro rechaza el cambio, la solicitud NO queda resuelta', function () {
@@ -58,7 +63,8 @@ it('si el maestro rechaza el cambio, la solicitud NO queda resuelta', function (
     // El cambio local se revierte: quedarse con el dato corregido solo acá
     // garantiza que la próxima sincronización lo pise.
     expect($this->titular->refresh()->nombre)->toBe('Rocio Paredez')
-        ->and($this->solicitud->refresh()->estado)->toBe(EstadoDeSolicitud::EnTramite);
+        ->and($this->solicitud->refresh()->estado)->toBe(EstadoDeSolicitud::EnTramite)
+        ->and(EntradaBitacora::where('evento', 'rectificacion.rechazada_por_maestro')->count())->toBe(1);
 });
 
 it('sin propagador enlazado aplica solo local, para sistemas que no hablan con el maestro', function () {
@@ -66,4 +72,58 @@ it('sin propagador enlazado aplica solo local, para sistemas que no hablan con e
 
     expect($this->titular->refresh()->nombre)->toBe('Rocío Paredes')
         ->and($this->solicitud->refresh()->estado)->toBe(EstadoDeSolicitud::Acogida);
+});
+
+it('si el maestro rechaza, la instancia en memoria del titular también queda con el valor original', function () {
+    app()->bind(PropagaRectificacion::class, fn () => new class implements PropagaRectificacion
+    {
+        public function propagar(Model $titular, array $cambios): bool
+        {
+            return false;
+        }
+    });
+
+    // Simula una pantalla que ya trae el titular cargado (p. ej. vía
+    // Solicitud::with('titular')): la misma instancia se pasa al servicio.
+    $solicitudConTitular = $this->solicitud->fresh(['titular']);
+    $titularEnMemoria = $solicitudConTitular->titular;
+
+    expect(fn () => app(Rectificaciones::class)->aplicar(
+        $solicitudConTitular,
+        ['nombre' => 'Rocío Paredes'],
+        'Se verifica con cédula.',
+    ))->toThrow(RectificacionNoPropagada::class);
+
+    // No es un fetch nuevo: es la MISMA instancia que forceFill() mutó.
+    expect($titularEnMemoria->nombre)->toBe('Rocio Paredez');
+});
+
+it('rechaza rectificar un campo que el titular no puede corregir, sin tocar el registro ni la solicitud', function () {
+    expect(fn () => app(Rectificaciones::class)->aplicar(
+        $this->solicitud,
+        ['diagnostico' => 'dato clínico inventado por el solicitante'],
+        'Se verifica con cédula.',
+    ))->toThrow(RectificacionNoPropagada::class);
+
+    expect($this->titular->refresh()->diagnostico)->toBeNull()
+        // La validación es previa a tomar(): una solicitud malformada ni
+        // siquiera mueve el estado.
+        ->and($this->solicitud->refresh()->estado)->toBe(EstadoDeSolicitud::Recibida);
+});
+
+it('no se puede rectificar una solicitud sin un titular vigente', function () {
+    $solicitud = app(Solicitudes::class)->registrar(
+        $this->titular,
+        TipoDeSolicitud::Rectificacion,
+        'Corregir mi nombre',
+        new ResultadoVerificacion(true, 'cedula_presencial'),
+    );
+
+    $this->titular->delete();
+
+    expect(fn () => app(Rectificaciones::class)->aplicar(
+        $solicitud->fresh(),
+        ['nombre' => 'Rocío Paredes'],
+        'Se verifica con cédula.',
+    ))->toThrow(RectificacionNoPropagada::class);
 });

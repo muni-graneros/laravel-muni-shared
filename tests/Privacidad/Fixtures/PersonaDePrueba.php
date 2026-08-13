@@ -46,4 +46,12 @@ class PersonaDePrueba extends Model implements TitularDeDatos
         $this->forceFill(['nombre' => 'ANONIMIZADO', 'documento' => null])->save();
         $this->fueAnonimizada = true;
     }
+
+    /** @return list<string> */
+    public function camposRectificables(): array
+    {
+        // Deliberadamente sin 'diagnostico': es el campo que un test debe
+        // probar que se rechaza.
+        return ['nombre', 'documento'];
+    }
 }

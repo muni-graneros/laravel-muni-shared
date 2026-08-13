@@ -33,4 +33,15 @@ interface TitularDeDatos
      * sirve para estadística comunal.
      */
     public function anonimizar(): void;
+
+    /**
+     * Los campos que el titular puede corregir mediante el derecho de
+     * rectificación. No es un cheque en blanco sobre el registro: una persona
+     * corrige su apellido, no su historial de trámites. Cada sistema declara
+     * su propia lista porque solo él sabe qué de su esquema es "dato personal
+     * corregible por el titular" y qué debe permanecer intacto.
+     *
+     * @return list<string> nombres de columna
+     */
+    public function camposRectificables(): array;
 }
