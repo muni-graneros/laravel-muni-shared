@@ -40,6 +40,21 @@ it('rechazar exige un fundamento y deja el estado rechazado', function () {
         ->and($this->solicitud->fundamento_resolucion)->not->toBeNull();
 });
 
+it('una resolución sin fundamento no resuelve nada ni deja evidencia', function () {
+    // Toda resolución debe ir fundada: el fundamento ES la respuesta que se le
+    // entrega al titular. Un espacio en blanco no es un fundamento, y si el
+    // guard fallara, la solicitud quedaría sellada como respondida sin decir
+    // qué se le respondió.
+    expect(fn () => $this->servicio->acoger($this->solicitud, '   '))
+        ->toThrow(ResolucionInvalida::class);
+
+    $this->solicitud->refresh();
+
+    expect($this->solicitud->estado)->toBe(EstadoDeSolicitud::Recibida)
+        ->and($this->solicitud->resuelta_en)->toBeNull()
+        ->and(EntradaBitacora::where('evento', 'solicitud.acogida')->count())->toBe(0);
+});
+
 it('no permite resolver dos veces la misma solicitud', function () {
     $this->servicio->acoger($this->solicitud, 'Entregado.');
 

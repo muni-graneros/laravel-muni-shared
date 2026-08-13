@@ -4,6 +4,7 @@ namespace Muni\Shared\Privacidad;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Modelos\Solicitud;
 
@@ -27,29 +28,36 @@ class Solicitudes
             );
         }
 
-        $solicitud = Solicitud::create([
-            'sistema' => (string) config('privacidad.sistema'),
-            'titular_type' => $titular::class,
-            'titular_id' => $titular->getKey(),
-            'tipo' => $tipo,
-            'estado' => EstadoDeSolicitud::Recibida,
-            'recibida_en' => now(),
-            'vence_en' => now()->addDays((int) config('privacidad.plazo_respuesta_dias')),
-            'detalle' => $detalle,
-            'verificacion_identidad' => [
-                'metodo' => $verificacion->metodo,
-                'evidencia' => $verificacion->evidencia,
-            ],
-            'solicitante' => $solicitante,
-            'user_registro_id' => Auth::id(),
-        ]);
+        // Como en el resto del módulo: la fila no puede sobrevivir sin su
+        // entrada de bitácora. Acá pesa doble, porque la recepción de una
+        // solicitud ARCOP es lo que hace correr el plazo legal de respuesta:
+        // una solicitud registrada sin evidencia de cuándo entró es exactamente
+        // lo que se discute en una fiscalización.
+        return DB::transaction(function () use ($titular, $tipo, $detalle, $verificacion, $solicitante) {
+            $solicitud = Solicitud::create([
+                'sistema' => (string) config('privacidad.sistema'),
+                'titular_type' => $titular::class,
+                'titular_id' => $titular->getKey(),
+                'tipo' => $tipo,
+                'estado' => EstadoDeSolicitud::Recibida,
+                'recibida_en' => now(),
+                'vence_en' => now()->addDays((int) config('privacidad.plazo_respuesta_dias')),
+                'detalle' => $detalle,
+                'verificacion_identidad' => [
+                    'metodo' => $verificacion->metodo,
+                    'evidencia' => $verificacion->evidencia,
+                ],
+                'solicitante' => $solicitante,
+                'user_registro_id' => Auth::id(),
+            ]);
 
-        $this->evidencia->registrar('solicitud.registrada', [
-            'solicitud_id' => $solicitud->getKey(),
-            'tipo' => $tipo->value,
-        ], $titular);
+            $this->evidencia->registrar('solicitud.registrada', [
+                'solicitud_id' => $solicitud->getKey(),
+                'tipo' => $tipo->value,
+            ], $titular);
 
-        return $solicitud;
+            return $solicitud;
+        });
     }
 
     public function tomar(Solicitud $solicitud): void
@@ -86,18 +94,26 @@ class Solicitudes
             throw new ResolucionInvalida('Toda resolución debe ir fundada: es lo que se le responde al titular.');
         }
 
-        $solicitud->update([
-            'estado' => $estado,
-            'resuelta_en' => now(),
-            'fundamento_resolucion' => $fundamento,
-            'respuesta_path' => $respuestaPath,
-            'user_resolucion_id' => Auth::id(),
-        ]);
+        // La resolución es la respuesta oficial al titular: si el registro de
+        // evidencia falla, la solicitud tampoco puede quedar sellada, o el
+        // sistema mostraría una solicitud resuelta sin rastro de quién la
+        // resolvió ni cuándo. Rectificaciones llama a acoger() desde su propia
+        // transacción; Laravel convierte esta en un savepoint y el rollback
+        // externo sigue arrastrándola.
+        DB::transaction(function () use ($solicitud, $estado, $fundamento, $respuestaPath): void {
+            $solicitud->update([
+                'estado' => $estado,
+                'resuelta_en' => now(),
+                'fundamento_resolucion' => $fundamento,
+                'respuesta_path' => $respuestaPath,
+                'user_resolucion_id' => Auth::id(),
+            ]);
 
-        $this->evidencia->registrar("solicitud.{$estado->value}", [
-            'solicitud_id' => $solicitud->getKey(),
-            'tipo' => $solicitud->tipo->value,
-        ], $solicitud->titular);
+            $this->evidencia->registrar("solicitud.{$estado->value}", [
+                'solicitud_id' => $solicitud->getKey(),
+                'tipo' => $solicitud->tipo->value,
+            ], $solicitud->titular);
+        });
     }
 
     private function exigirPendiente(Solicitud $solicitud): void
