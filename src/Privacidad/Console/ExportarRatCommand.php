@@ -20,14 +20,15 @@ class ExportarRatCommand extends Command
     {
         $sistema = (string) config('privacidad.sistema');
 
+        // No se filtra por `activa`: una finalidad dada de baja sigue siendo
+        // parte del historial de tratamiento, y el RAT existe para que una
+        // fiscalización vea lo que el sistema realmente hizo, no una versión
+        // recortada. El estado se muestra, nunca se oculta.
         $finalidades = Finalidad::query()->delSistema($sistema)->orderBy('codigo')->get();
 
-        if ($finalidades->isEmpty()) {
-            $this->warn("El sistema «{$sistema}» no declaró ninguna finalidad de tratamiento.");
-
-            return self::SUCCESS;
-        }
-
+        // El chequeo de --json va primero: quien redirige la salida a
+        // `json_decode` no puede recibir una línea de advertencia en texto
+        // plano solo porque el sistema no declaró finalidades todavía.
         if ($this->option('json')) {
             $this->line(json_encode([
                 'sistema' => $sistema,
@@ -36,9 +37,11 @@ class ExportarRatCommand extends Command
                 'finalidades' => $finalidades->map(fn (Finalidad $f): array => [
                     'codigo' => $f->codigo,
                     'nombre' => $f->nombre,
+                    'descripcion' => $f->descripcion,
                     'base_licitud' => $f->base_licitud->value,
                     'norma_habilitante' => $f->norma_habilitante,
                     'es_accesoria' => $f->es_accesoria,
+                    'activa' => $f->activa,
                     'plazo_retencion_meses' => $f->plazo_retencion_meses,
                     'categorias_datos' => $f->categorias_datos,
                     'destinatarios' => $f->destinatarios,
@@ -48,27 +51,25 @@ class ExportarRatCommand extends Command
             return self::SUCCESS;
         }
 
+        if ($finalidades->isEmpty()) {
+            $this->warn("El sistema «{$sistema}» no declaró ninguna finalidad de tratamiento.");
+
+            return self::SUCCESS;
+        }
+
         $this->info("RAT del sistema «{$sistema}» — ".config('privacidad.responsable.nombre'));
 
-        // Sin TTY (CI, cron, salida redirigida a un archivo) Symfony asume 80
-        // columnas y envuelve las celdas: la norma habilitante termina cortada
-        // a la mitad. El RAT se lee tanto en pantalla como en un log, así que
-        // se fuerza un ancho amplio en vez de dejarlo a la suerte del entorno.
-        $anchoPrevio = getenv('COLUMNS');
-        putenv('COLUMNS=200');
-
         $this->table(
-            ['Código', 'Finalidad', 'Base de licitud', 'Norma', 'Retención (meses)'],
+            ['Código', 'Finalidad', 'Base de licitud', 'Norma', 'Retención (meses)', 'Estado'],
             $finalidades->map(fn (Finalidad $f): array => [
                 $f->codigo,
                 $f->nombre,
                 $f->base_licitud->etiqueta(),
                 $f->norma_habilitante ?? '—',
                 $f->plazo_retencion_meses ?? 'sin plazo',
+                $f->activa ? 'Vigente' : 'Dada de baja',
             ])->all(),
         );
-
-        putenv($anchoPrevio === false ? 'COLUMNS' : "COLUMNS={$anchoPrevio}");
 
         return self::SUCCESS;
     }

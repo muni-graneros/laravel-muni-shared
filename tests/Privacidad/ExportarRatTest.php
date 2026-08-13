@@ -5,6 +5,14 @@ use Muni\Shared\Privacidad\BaseLicitud;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
 
 beforeEach(function () {
+    // Sin TTY (este entorno de test, CI) Symfony cae a 80 columnas y envuelve
+    // las celdas de la tabla, partiendo textos como "Ley 20.422" en dos
+    // líneas. Es una circunstancia del arnés de test, no del comando: se fija
+    // acá y no en el comando, para no forzar un ancho de tabla arbitrario
+    // sobre la sesión real de un funcionario municipal.
+    $this->anchoOriginal = getenv('COLUMNS');
+    putenv('COLUMNS=200');
+
     config([
         'privacidad.sistema' => 'discapacidad',
         'privacidad.responsable.nombre' => 'I. Municipalidad de Graneros',
@@ -18,6 +26,10 @@ beforeEach(function () {
         'norma_habilitante' => 'Ley 20.422',
         'plazo_retencion_meses' => 120,
     ]);
+});
+
+afterEach(function () {
+    putenv($this->anchoOriginal === false ? 'COLUMNS' : "COLUMNS={$this->anchoOriginal}");
 });
 
 it('imprime el RAT del sistema con su base de licitud y norma', function () {
@@ -58,4 +70,49 @@ it('avisa cuando el sistema no declaró ninguna finalidad', function () {
 
     expect($codigo)->toBe(0)
         ->and(Artisan::output())->toContain('no declaró');
+});
+
+it('exporta json válido con finalidades vacío cuando el sistema no declaró nada', function () {
+    // Quien usa --json lo hace para pasarle la salida a json_decode: una
+    // advertencia en texto plano en vez de JSON rompe a cualquier consumidor,
+    // justo cuando el sistema más necesita quedar documentado (sin
+    // finalidades declaradas).
+    Finalidad::query()->delete();
+
+    $codigo = Artisan::call('privacidad:rat', ['--json' => true]);
+
+    expect($codigo)->toBe(0);
+
+    $salida = Artisan::output();
+    $rat = json_decode($salida, true, flags: JSON_THROW_ON_ERROR);
+
+    expect($rat['sistema'])->toBe('discapacidad')
+        ->and($rat['responsable']['nombre'])->toBe('I. Municipalidad de Graneros')
+        ->and($rat['finalidades'])->toBe([]);
+});
+
+it('exporta finalidades activas e inactivas por igual, distinguiendo el estado', function () {
+    // El RAT no filtra por `activa`: una finalidad dada de baja sigue siendo
+    // parte del historial de tratamiento y ocultarla sería una forma distinta
+    // de tergiversar lo que el sistema hizo. Se muestra el estado, no se
+    // recorta la lista.
+    Finalidad::create([
+        'sistema' => 'discapacidad',
+        'codigo' => 'campana_censo_2019',
+        'nombre' => 'Campaña de censo comunal 2019',
+        'base_licitud' => BaseLicitud::FuncionLegal,
+        'norma_habilitante' => 'Ley 20.422',
+        'activa' => false,
+    ]);
+
+    $codigo = Artisan::call('privacidad:rat', ['--json' => true]);
+
+    expect($codigo)->toBe(0);
+
+    $rat = json_decode(Artisan::output(), true, flags: JSON_THROW_ON_ERROR);
+    $finalidades = collect($rat['finalidades'])->keyBy('codigo');
+
+    expect($finalidades)->toHaveCount(2)
+        ->and($finalidades['registro_comunal']['activa'])->toBeTrue()
+        ->and($finalidades['campana_censo_2019']['activa'])->toBeFalse();
 });
