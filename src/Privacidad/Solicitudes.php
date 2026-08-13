@@ -6,7 +6,6 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Modelos\Solicitud;
-use RuntimeException;
 
 class Solicitudes
 {
@@ -22,7 +21,7 @@ class Solicitudes
         // Entregar datos personales a quien no acreditó ser el titular es la
         // fuga más fácil de cometer y la más difícil de explicar después.
         if (! $verificacion->verificado) {
-            throw new RuntimeException(
+            throw new IdentidadNoVerificada(
                 'No se puede registrar la solicitud: la identidad del solicitante no fue verificada ('
                 .($verificacion->evidencia['motivo'] ?? 'sin motivo').').',
             );

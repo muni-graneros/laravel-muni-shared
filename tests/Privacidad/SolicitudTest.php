@@ -1,6 +1,7 @@
 <?php
 
 use Muni\Shared\Privacidad\EstadoDeSolicitud;
+use Muni\Shared\Privacidad\IdentidadNoVerificada;
 use Muni\Shared\Privacidad\Modelos\Solicitud;
 use Muni\Shared\Privacidad\ResultadoVerificacion;
 use Muni\Shared\Privacidad\Solicitudes;
@@ -47,7 +48,8 @@ it('rechaza registrar una solicitud si la identidad no se verificó', function (
         TipoDeSolicitud::Supresion,
         'Bórrenme',
         $fallida,
-    ))->toThrow(RuntimeException::class);
+    ))->toThrow(IdentidadNoVerificada::class);
+    expect(Solicitud::count())->toBe(0);
 });
 
 it('lista las solicitudes por vencer y las vencidas', function () {
