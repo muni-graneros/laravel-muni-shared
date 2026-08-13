@@ -8,6 +8,8 @@ use Muni\Shared\Console\ConfigurarCorreoCommand;
 use Muni\Shared\Console\MuniDocsCommand;
 use Muni\Shared\Console\ProbarCorreoCommand;
 use Muni\Shared\Correo\TransporteGraph;
+use Muni\Shared\Privacidad\BitacoraEnBaseDeDatos;
+use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 
 /**
  * Service provider del paquete compartido del ecosistema municipal.
@@ -27,6 +29,13 @@ class MuniSharedServiceProvider extends ServiceProvider
         // de que alguien resuelva el mailer.
         $this->mergeConfigFrom(__DIR__.'/../config/correo-graph.php', 'mail.mailers.graph');
         $this->mergeConfigFrom(__DIR__.'/../config/privacidad.php', 'privacidad');
+
+        // Enlace por defecto: un sistema que ya tenga su propia trazabilidad
+        // puede sustituirlo sin tocar el módulo.
+        $this->app->bind(
+            RegistroDeEvidencia::class,
+            BitacoraEnBaseDeDatos::class,
+        );
     }
 
     public function boot(): void
