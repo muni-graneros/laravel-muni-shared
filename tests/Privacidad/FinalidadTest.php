@@ -21,6 +21,15 @@ it('guarda una finalidad fundada en función legal con su norma habilitante', fu
         ->and($finalidad->categorias_datos)->toBe(['identificacion', 'salud']);
 });
 
+it('rechaza una finalidad sin base de licitud en vez de reventar con un error de PHP', function () {
+    expect(fn () => Finalidad::create([
+        'sistema' => 'discapacidad',
+        'codigo' => 'sin_base',
+        'nombre' => 'Sin base de licitud',
+        'es_accesoria' => false,
+    ]))->toThrow(FinalidadInvalida::class);
+});
+
 it('rechaza una finalidad de función legal sin norma habilitante', function () {
     expect(fn () => Finalidad::create([
         'sistema' => 'discapacidad',
