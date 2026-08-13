@@ -9,7 +9,10 @@ use Muni\Shared\Console\MuniDocsCommand;
 use Muni\Shared\Console\ProbarCorreoCommand;
 use Muni\Shared\Correo\TransporteGraph;
 use Muni\Shared\Privacidad\BitacoraEnBaseDeDatos;
+use Muni\Shared\Privacidad\Console\AplicarRetencionCommand;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
+use Muni\Shared\Privacidad\Contratos\ResuelveTitularesVencidos;
+use Muni\Shared\Privacidad\NingunTitularVencido;
 
 /**
  * Service provider del paquete compartido del ecosistema municipal.
@@ -36,6 +39,11 @@ class MuniSharedServiceProvider extends ServiceProvider
             RegistroDeEvidencia::class,
             BitacoraEnBaseDeDatos::class,
         );
+
+        $this->app->bind(
+            ResuelveTitularesVencidos::class,
+            NingunTitularVencido::class,
+        );
     }
 
     public function boot(): void
@@ -58,6 +66,7 @@ class MuniSharedServiceProvider extends ServiceProvider
                 MuniDocsCommand::class,
                 ProbarCorreoCommand::class,
                 ConfigurarCorreoCommand::class,
+                AplicarRetencionCommand::class,
             ]);
         }
     }
