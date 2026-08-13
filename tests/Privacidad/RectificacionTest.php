@@ -141,6 +141,33 @@ it('rechaza rectificar un campo que el titular no puede corregir, sin tocar el r
         ->and($this->solicitud->refresh()->estado)->toBe(EstadoDeSolicitud::Recibida);
 });
 
+it('no rectifica una solicitud que pedía otra cosa', function () {
+    $supresion = app(Solicitudes::class)->registrar(
+        $this->titular,
+        TipoDeSolicitud::Supresion,
+        'Bórrenme del registro',
+        new ResultadoVerificacion(true, 'cedula_presencial'),
+    );
+
+    expect(fn () => app(Rectificaciones::class)->aplicar(
+        $supresion,
+        ['nombre' => 'Rocío Paredes'],
+        'Se verifica con cédula.',
+    ))->toThrow(RectificacionNoPropagada::class);
+
+    // La solicitud de supresión no puede quedar acogida sin haberse suprimido nada.
+    expect($supresion->refresh()->estado)->toBe(EstadoDeSolicitud::Recibida)
+        ->and($this->titular->refresh()->nombre)->toBe('Rocio Paredez');
+});
+
+it('no acoge una rectificación sin cambios', function () {
+    // Acogerla certificaría por escrito una corrección que no tocó ningún dato.
+    expect(fn () => app(Rectificaciones::class)->aplicar($this->solicitud, [], 'Se verifica con cédula.'))
+        ->toThrow(RectificacionNoPropagada::class);
+
+    expect($this->solicitud->refresh()->estado)->toBe(EstadoDeSolicitud::Recibida);
+});
+
 it('no se puede rectificar una solicitud sin un titular vigente', function () {
     $solicitud = app(Solicitudes::class)->registrar(
         $this->titular,

@@ -36,7 +36,7 @@ class Solicitudes
         return DB::transaction(function () use ($titular, $tipo, $detalle, $verificacion, $solicitante) {
             $solicitud = Solicitud::create([
                 'sistema' => (string) config('privacidad.sistema'),
-                'titular_type' => $titular::class,
+                'titular_type' => $titular->getMorphClass(),
                 'titular_id' => $titular->getKey(),
                 'tipo' => $tipo,
                 'estado' => EstadoDeSolicitud::Recibida,

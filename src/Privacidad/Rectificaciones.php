@@ -24,6 +24,26 @@ class Rectificaciones
     /** @param array<string, mixed> $cambios */
     public function aplicar(Solicitud $solicitud, array $cambios, string $fundamento): void
     {
+        // Dos formas de acoger una rectificación que nunca ocurrió: resolver
+        // como rectificada una solicitud que pedía otra cosa (una supresión
+        // queda "acogida" sin haberse suprimido nada), o acoger una lista de
+        // cambios vacía, que sella la solicitud y certifica una corrección que
+        // no tocó ningún dato. Las dos terminan en el mismo lugar: un registro
+        // que dice que el municipio corrigió algo que sigue igual.
+        if ($solicitud->tipo !== TipoDeSolicitud::Rectificacion) {
+            throw new RectificacionNoPropagada(
+                "La solicitud #{$solicitud->getKey()} es de tipo «{$solicitud->tipo->etiqueta()}»: "
+                .'solo una solicitud de rectificación se resuelve rectificando.',
+            );
+        }
+
+        if ($cambios === []) {
+            throw new RectificacionNoPropagada(
+                "La solicitud #{$solicitud->getKey()} no trae ningún cambio que aplicar: "
+                .'acogerla certificaría una corrección que no se hizo.',
+            );
+        }
+
         $titular = $solicitud->titular;
 
         // Se exige TitularDeDatos, no solo Model: sin camposRectificables()

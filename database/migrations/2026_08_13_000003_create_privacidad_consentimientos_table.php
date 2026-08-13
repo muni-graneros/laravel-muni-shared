@@ -24,7 +24,10 @@ return new class extends Migration
             $table->string('ip_hash')->nullable();
             $table->timestamps();
 
-            $table->index(['titular_type', 'titular_id', 'finalidad_id'], 'privacidad_consentimientos_titular_finalidad');
+            // Sin índice compuesto extra sobre (titular_type, titular_id,
+            // finalidad_id): morphs() ya crea el de (titular_type, titular_id),
+            // que es su prefijo y sirve a las mismas consultas del servicio.
+            // Duplicarlo solo cuesta escrituras.
         });
     }
 

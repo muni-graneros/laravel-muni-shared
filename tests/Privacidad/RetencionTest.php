@@ -119,6 +119,14 @@ it('no avisa de nada cuando la retención sí está operativa y simplemente no h
         ->assertSuccessful();
 });
 
+it('sin PRIVACIDAD_SISTEMA configurado el comando avisa en vez de reventar', function () {
+    config(['privacidad.sistema' => null]);
+
+    $this->artisan('privacidad:aplicar-retencion')
+        ->expectsOutputToContain('no declaró ninguna finalidad vigente con plazo de retención')
+        ->assertSuccessful();
+});
+
 it('un sistema que no implementó el resolvedor no purga nada en vez de reventar', function () {
     // Se deshace el enlace del beforeEach para simular un sistema recién instalado.
     app()->forgetInstance(ResuelveTitularesVencidos::class);

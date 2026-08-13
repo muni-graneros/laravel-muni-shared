@@ -2,7 +2,12 @@
 
 return [
     // Identifica al sistema dentro del RAT compartido del ecosistema.
-    'sistema' => env('PRIVACIDAD_SISTEMA', 'sistema'),
+    //
+    // Sin default plausible a propósito: el valor llega a salida que se le
+    // muestra a la autoridad («RAT del sistema ...»), y un marcador de posición
+    // que parece un nombre real pasa desapercibido mucho más tiempo que un
+    // vacío. Los comandos avisan cuando no está configurado.
+    'sistema' => env('PRIVACIDAD_SISTEMA'),
 
     // Plazo legal de respuesta a una solicitud ARCOP. Configurable porque debe
     // confirmarse contra el texto vigente y su reglamento antes de producción.

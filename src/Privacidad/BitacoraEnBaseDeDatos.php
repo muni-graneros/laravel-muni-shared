@@ -15,7 +15,11 @@ class BitacoraEnBaseDeDatos implements RegistroDeEvidencia
         EntradaBitacora::create([
             'sistema' => (string) config('privacidad.sistema'),
             'evento' => $evento,
-            'titular_type' => $titular ? $titular::class : null,
+            // getMorphClass() y no ::class: si el sistema declaró un morph map,
+            // se guarda el alias estable en vez del FQCN. Estas filas son
+            // evidencia legal y tienen que sobrevivir a que alguien mueva o
+            // renombre la clase del modelo años después.
+            'titular_type' => $titular?->getMorphClass(),
             'titular_id' => $titular?->getKey(),
             'datos' => $datos,
             'user_id' => Auth::id(),

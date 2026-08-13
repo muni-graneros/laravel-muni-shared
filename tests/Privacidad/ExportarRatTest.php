@@ -91,6 +91,18 @@ it('exporta json válido con finalidades vacío cuando el sistema no declaró na
         ->and($rat['finalidades'])->toBe([]);
 });
 
+it('sin PRIVACIDAD_SISTEMA configurado no revienta: informa que no hay finalidades', function () {
+    // El default de config es null, no un marcador plausible como "sistema":
+    // ese valor llegaba a salida que se le muestra a la autoridad. Nulo, el
+    // comando tiene que seguir corriendo (scopeDelSistema tipa string).
+    config(['privacidad.sistema' => null]);
+
+    $codigo = Artisan::call('privacidad:rat');
+
+    expect($codigo)->toBe(0)
+        ->and(Artisan::output())->toContain('no declaró');
+});
+
 it('exporta finalidades activas e inactivas por igual, distinguiendo el estado', function () {
     // El RAT no filtra por `activa`: una finalidad dada de baja sigue siendo
     // parte del historial de tratamiento y ocultarla sería una forma distinta

@@ -44,7 +44,7 @@ class Consentimientos
             $this->revocar($titular, $finalidad);
 
             $consentimiento = Consentimiento::create([
-                'titular_type' => $titular::class,
+                'titular_type' => $titular->getMorphClass(),
                 'titular_id' => $titular->getKey(),
                 'finalidad_id' => $finalidad->getKey(),
                 'vigente_clave' => $this->claveVigente($titular, $finalidad),
@@ -73,7 +73,7 @@ class Consentimientos
             // mueven siempre juntas, o la fila revocada seguiría bloqueando el índice
             // único e impidiendo que se otorgue un consentimiento nuevo.
             $afectados = Consentimiento::query()
-                ->where('titular_type', $titular::class)
+                ->where('titular_type', $titular->getMorphClass())
                 ->where('titular_id', $titular->getKey())
                 ->where('finalidad_id', $finalidad->getKey())
                 ->vigentes()
@@ -90,7 +90,7 @@ class Consentimientos
     public function vigente(Model $titular, Finalidad $finalidad): bool
     {
         return Consentimiento::query()
-            ->where('titular_type', $titular::class)
+            ->where('titular_type', $titular->getMorphClass())
             ->where('titular_id', $titular->getKey())
             ->where('finalidad_id', $finalidad->getKey())
             ->vigentes()
@@ -99,13 +99,17 @@ class Consentimientos
 
     /**
      * Identidad determinística de "consentimiento vigente para este (titular,
-     * finalidad)". Se hashea porque `titular_type` es un nombre de clase
-     * completamente calificado y puede exceder el límite de índice único de
-     * MySQL (767 bytes en InnoDB con row_format antiguo); sha1 da un largo fijo
-     * de 40 caracteres, cómodo bajo cualquier backend soportado.
+     * finalidad)". Se hashea porque `titular_type` puede ser un nombre de clase
+     * completamente calificado y exceder el límite de índice único de MySQL
+     * (767 bytes en InnoDB con row_format antiguo); sha1 da un largo fijo de 40
+     * caracteres, cómodo bajo cualquier backend soportado.
+     *
+     * Usa la misma fuente que la columna `titular_type` —getMorphClass()— y no
+     * `::class`: si las dos no coinciden, revocar() dejaría de encontrar la fila
+     * que la clave está bloqueando en el índice único.
      */
     private function claveVigente(Model $titular, Finalidad $finalidad): string
     {
-        return sha1($titular::class.'|'.$titular->getKey().'|'.$finalidad->getKey());
+        return sha1($titular->getMorphClass().'|'.$titular->getKey().'|'.$finalidad->getKey());
     }
 }
