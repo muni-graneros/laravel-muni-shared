@@ -21,7 +21,10 @@ beforeEach(function () {
 it('otorga un consentimiento vigente para una finalidad accesoria', function () {
     app(Consentimientos::class)->otorgar($this->titular, $this->difusion, MedioDeConsentimiento::FirmaPapel);
 
-    expect(app(Consentimientos::class)->vigente($this->titular, $this->difusion))->toBeTrue();
+    expect(app(Consentimientos::class)->vigente($this->titular, $this->difusion))->toBeTrue()
+        // Sin sesión autenticada en el test, Auth::id() es null: la columna queda
+        // poblada con lo que devuelva el guard, no ignorada.
+        ->and(Consentimiento::sole()->user_id)->toBe(auth()->id());
 });
 
 it('revocar no borra la evidencia: marca la fecha y deja de estar vigente', function () {

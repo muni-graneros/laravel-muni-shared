@@ -3,6 +3,8 @@
 namespace Muni\Shared\Privacidad;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Modelos\Consentimiento;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
@@ -30,44 +32,59 @@ class Consentimientos
             );
         }
 
-        // Si había uno vigente, se cierra: dos vigentes a la vez harían ambiguo
-        // qué texto aceptó el titular.
-        $this->revocar($titular, $finalidad);
+        // Transacción + bloqueo de fila en revocar(): dos otorgar() concurrentes
+        // (doble clic, pestaña duplicada, reintento) no deben poder dejar dos
+        // consentimientos vigentes a la vez, porque entonces nadie podría acreditar
+        // cuál texto aceptó realmente el titular. Y si el registro de evidencia
+        // falla después de crear la fila, todo se revierte: un consentimiento sin
+        // evidencia contradice el propósito del módulo.
+        return DB::transaction(function () use ($titular, $finalidad, $medio, $opciones) {
+            // Si había uno vigente, se cierra primero.
+            $this->revocar($titular, $finalidad);
 
-        $consentimiento = Consentimiento::create([
-            'titular_type' => $titular::class,
-            'titular_id' => $titular->getKey(),
-            'finalidad_id' => $finalidad->getKey(),
-            'otorgado_en' => now(),
-            'medio' => $medio,
-            'evidencia_path' => $opciones['evidencia_path'] ?? null,
-            'version_texto' => $opciones['version_texto'] ?? null,
-            'otorgado_por' => $opciones['otorgado_por'] ?? 'titular',
-            'ip_hash' => isset($opciones['ip']) ? hash('sha256', (string) $opciones['ip']) : null,
-        ]);
+            $consentimiento = Consentimiento::create([
+                'titular_type' => $titular::class,
+                'titular_id' => $titular->getKey(),
+                'finalidad_id' => $finalidad->getKey(),
+                'otorgado_en' => now(),
+                'medio' => $medio,
+                'evidencia_path' => $opciones['evidencia_path'] ?? null,
+                'version_texto' => $opciones['version_texto'] ?? null,
+                'otorgado_por' => $opciones['otorgado_por'] ?? 'titular',
+                'user_id' => Auth::id(),
+                'ip_hash' => isset($opciones['ip']) ? hash('sha256', (string) $opciones['ip']) : null,
+            ]);
 
-        $this->evidencia->registrar('consentimiento.otorgado', [
-            'finalidad' => $finalidad->codigo,
-            'medio' => $medio->value,
-        ], $titular);
+            $this->evidencia->registrar('consentimiento.otorgado', [
+                'finalidad' => $finalidad->codigo,
+                'medio' => $medio->value,
+            ], $titular);
 
-        return $consentimiento;
+            return $consentimiento;
+        });
     }
 
     public function revocar(Model $titular, Finalidad $finalidad): void
     {
-        $afectados = Consentimiento::query()
-            ->where('titular_type', $titular::class)
-            ->where('titular_id', $titular->getKey())
-            ->where('finalidad_id', $finalidad->getKey())
-            ->vigentes()
-            ->update(['revocado_en' => now()]);
+        DB::transaction(function () use ($titular, $finalidad) {
+            // lockForUpdate() serializa a los llamantes concurrentes sobre las filas
+            // existentes; bajo SQLite (con el que corren los tests) es un no-op, así
+            // que la suite no prueba el bloqueo en sí, solo que el comportamiento
+            // secuencial sigue intacto.
+            $afectados = Consentimiento::query()
+                ->where('titular_type', $titular::class)
+                ->where('titular_id', $titular->getKey())
+                ->where('finalidad_id', $finalidad->getKey())
+                ->vigentes()
+                ->lockForUpdate()
+                ->update(['revocado_en' => now()]);
 
-        if ($afectados > 0) {
-            $this->evidencia->registrar('consentimiento.revocado', [
-                'finalidad' => $finalidad->codigo,
-            ], $titular);
-        }
+            if ($afectados > 0) {
+                $this->evidencia->registrar('consentimiento.revocado', [
+                    'finalidad' => $finalidad->codigo,
+                ], $titular);
+            }
+        });
     }
 
     public function vigente(Model $titular, Finalidad $finalidad): bool
