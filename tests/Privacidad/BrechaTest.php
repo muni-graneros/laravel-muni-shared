@@ -38,3 +38,16 @@ it('lista las brechas de riesgo alto que aún no se notifican a la Agencia', fun
 
     expect(Brecha::sinNotificar()->pluck('descripcion')->all())->toBe(['Sin notificar']);
 });
+
+it('sinNotificar() no filtra por nivel de riesgo, solo por el hito de la Agencia', function () {
+    app(Brechas::class)->registrar('Riesgo bajo sin notificar', ['riesgo_alto' => false]);
+
+    expect(Brecha::sinNotificar()->pluck('descripcion')->all())->toBe(['Riesgo bajo sin notificar']);
+});
+
+it('una brecha sin evaluar queda en null, no en false, y aparece como pendiente', function () {
+    $brecha = app(Brechas::class)->registrar('Detectada, sin triage aún');
+
+    expect($brecha->riesgo_alto)->toBeNull()
+        ->and(Brecha::sinEvaluarRiesgo()->pluck('descripcion')->all())->toBe(['Detectada, sin triage aún']);
+});

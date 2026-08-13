@@ -16,7 +16,14 @@ return new class extends Migration
             $table->string('naturaleza')->nullable();
             $table->json('categorias_afectadas')->nullable();
             $table->unsignedInteger('titulares_estimados')->nullable();
-            $table->boolean('riesgo_alto')->default(false);
+            // Nullable y sin default: null significa "todavía no se evaluó el
+            // riesgo", que es un estado distinto de "se evaluó y no es alto".
+            // Una brecha se registra apenas se detecta, antes de que exista
+            // triage; defaultear a false archivaría brechas sin evaluar como
+            // si ya se hubiera descartado el riesgo, y ese es el error que
+            // deja titulares sin notificar. Null nunca debe leerse como "sin
+            // riesgo".
+            $table->boolean('riesgo_alto')->nullable();
             $table->text('medidas')->nullable();
             // Dos hitos distintos y con destinatarios distintos: la Agencia
             // siempre, los titulares solo cuando el riesgo es alto.

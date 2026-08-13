@@ -28,4 +28,15 @@ class Brecha extends Model
     {
         $query->whereNull('notificada_agencia_en');
     }
+
+    // Esta es la cola de triage: brechas registradas antes de que alguien
+    // determinara si el riesgo es alto. No confundir con "riesgo bajo" (que
+    // es `riesgo_alto === false`) ni filtrar por sinNotificar() para
+    // encontrarlas, porque una brecha sin evaluar también está sin notificar
+    // y hay que distinguir ambas colas.
+    /** @param Builder<Brecha> $query */
+    public function scopeSinEvaluarRiesgo(Builder $query): void
+    {
+        $query->whereNull('riesgo_alto');
+    }
 }

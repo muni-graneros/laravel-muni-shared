@@ -29,7 +29,15 @@ class Brechas
                 'naturaleza' => $datos['naturaleza'] ?? null,
                 'categorias_afectadas' => $datos['categorias_afectadas'] ?? null,
                 'titulares_estimados' => $datos['titulares_estimados'] ?? null,
-                'riesgo_alto' => (bool) ($datos['riesgo_alto'] ?? false),
+                // Sin cast a bool: si quien llama no dice nada, el riesgo
+                // queda sin evaluar (null), no "sin riesgo" (false). Es la
+                // tercera vez en este módulo que un default silencioso
+                // habría tenido consecuencia legal (compárese con la falta
+                // de finalidad accesoria en Consentimientos y el resolvedor
+                // ausente en AplicarRetencion): acá, archivar como "no es
+                // alto" una brecha que nadie evaluó es exactamente el modo
+                // en que un titular que debía ser notificado no lo es.
+                'riesgo_alto' => $datos['riesgo_alto'] ?? null,
                 'medidas' => $datos['medidas'] ?? null,
             ]);
 
