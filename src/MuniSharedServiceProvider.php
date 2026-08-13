@@ -8,6 +8,12 @@ use Muni\Shared\Console\ConfigurarCorreoCommand;
 use Muni\Shared\Console\MuniDocsCommand;
 use Muni\Shared\Console\ProbarCorreoCommand;
 use Muni\Shared\Correo\TransporteGraph;
+use Muni\Shared\Privacidad\BitacoraEnBaseDeDatos;
+use Muni\Shared\Privacidad\Console\AplicarRetencionCommand;
+use Muni\Shared\Privacidad\Console\ExportarRatCommand;
+use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
+use Muni\Shared\Privacidad\Contratos\ResuelveTitularesVencidos;
+use Muni\Shared\Privacidad\NingunTitularVencido;
 
 /**
  * Service provider del paquete compartido del ecosistema municipal.
@@ -26,10 +32,38 @@ class MuniSharedServiceProvider extends ServiceProvider
         // no en boot() porque la configuración tiene que estar completa antes
         // de que alguien resuelva el mailer.
         $this->mergeConfigFrom(__DIR__.'/../config/correo-graph.php', 'mail.mailers.graph');
+        $this->mergeConfigFrom(__DIR__.'/../config/privacidad.php', 'privacidad');
+
+        // Enlace por defecto: un sistema que ya tenga su propia trazabilidad
+        // puede sustituirlo sin tocar el módulo.
+        $this->app->bind(
+            RegistroDeEvidencia::class,
+            BitacoraEnBaseDeDatos::class,
+        );
+
+        $this->app->bind(
+            ResuelveTitularesVencidos::class,
+            NingunTitularVencido::class,
+        );
     }
 
     public function boot(): void
     {
+        // Las migraciones se cargan y no se publican: así, actualizar el paquete
+        // propaga el esquema a los 8 sistemas con un `migrate`, sin un paso de
+        // publicación por repo que alguien va a olvidar.
+        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+
+        if ($this->app->runningInConsole()) {
+            $this->publishes([
+                __DIR__.'/../config/privacidad.php' => config_path('privacidad.php'),
+            ], 'privacidad-config');
+
+            $this->publishes([
+                __DIR__.'/../stubs/privacidad' => base_path('docs/privacidad'),
+            ], 'privacidad-stubs');
+        }
+
         $this->registrarCorreoPorGraph();
 
         if ($this->app->runningInConsole()) {
@@ -37,6 +71,8 @@ class MuniSharedServiceProvider extends ServiceProvider
                 MuniDocsCommand::class,
                 ProbarCorreoCommand::class,
                 ConfigurarCorreoCommand::class,
+                AplicarRetencionCommand::class,
+                ExportarRatCommand::class,
             ]);
         }
     }

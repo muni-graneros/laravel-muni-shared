@@ -64,3 +64,62 @@ composer install
 ./vendor/bin/pint --test
 ./vendor/bin/pest
 ```
+
+## Módulo Privacidad (Ley 21.719)
+
+Cubre el registro de actividades de tratamiento, el consentimiento por
+finalidad, los derechos ARCOP con control de plazo, la retención con supresión
+efectiva y el registro de brechas.
+
+### Instalar en un sistema
+
+```bash
+composer update muni-graneros/laravel-muni-shared
+php artisan migrate
+php artisan vendor:publish --tag=privacidad-config
+php artisan vendor:publish --tag=privacidad-stubs
+```
+
+En el `.env`:
+
+```
+PRIVACIDAD_SISTEMA=discapacidad
+PRIVACIDAD_PLAZO_RESPUESTA_DIAS=30
+PRIVACIDAD_RESPONSABLE="I. Municipalidad de Graneros"
+PRIVACIDAD_CONTACTO=privacidad@municipalidadgraneros.cl
+PRIVACIDAD_DELEGADO=
+```
+
+### Lo que cada sistema debe aportar
+
+| Contrato | Obligatorio | Qué resuelve |
+|---|---|---|
+| `TitularDeDatos` | Sí | Cómo se exporta, purga y anonimiza a una persona, y qué campos (`camposRectificables()`) puede corregir mediante el derecho de rectificación — no es un cheque en blanco sobre todo el registro |
+| `ResuelveTitularesVencidos` | Solo si hay retención | Desde cuándo se trata a un titular bajo cada finalidad |
+| `VerificadorIdentidad` | Por convención | Cómo se acredita que el solicitante es el titular. El paquete **no lo resuelve del contenedor**: `Solicitudes::registrar()` recibe un `ResultadoVerificacion` ya construido. Es el código que llama —la acción del panel, el mesón— el que debe verificar con él antes de registrar; implementarlo y no usarlo no protege nada |
+| `PropagaRectificacion` | Solo si es modelo de lectura del maestro | Que la rectificación no la pise la próxima sincronización. **Debe ser síncrono**: tiene que conocer la respuesta del maestro antes de devolver. Despachar un job en cola y devolver `true` no es una implementación válida —informa éxito antes de que el maestro haya visto nada—. Devolver `false` o lanzar significan lo mismo: no se propagó |
+| `RegistroDeEvidencia` | No | Sustituir la bitácora propia por la del sistema |
+
+Además, cada sistema siembra sus finalidades: es donde declara qué trata, con
+qué base y por cuánto tiempo.
+
+### Atender un acceso o una portabilidad
+
+```php
+$datos = app(ExportacionDeDatos::class)->paraSolicitud($solicitud);
+```
+
+`paraSolicitud()` es la entrada a usar desde el panel: toma el titular de la
+solicitud —que ya pasó por la verificación de identidad al registrarse—, rechaza
+los tipos que no dan derecho a la copia y deja la entrega en `privacidad_bitacora`.
+`paraTitular()` no verifica nada ni registra nada: cablearla a una acción que
+recibe un id del request es un IDOR sin rastro.
+
+### Comandos
+
+```bash
+php artisan privacidad:rat                        # el RAT en tabla
+php artisan privacidad:rat --json                 # el RAT para adjuntar
+php artisan privacidad:aplicar-retencion          # simulación
+php artisan privacidad:aplicar-retencion --ejecutar
+```
