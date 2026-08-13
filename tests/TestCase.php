@@ -36,4 +36,9 @@ abstract class TestCase extends Base
             'foreign_key_constraints' => true,
         ]);
     }
+
+    protected function defineDatabaseMigrations(): void
+    {
+        $this->loadMigrationsFrom(__DIR__.'/Privacidad/Fixtures/migrations');
+    }
 }
