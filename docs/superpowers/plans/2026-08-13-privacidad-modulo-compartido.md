@@ -735,7 +735,7 @@ versión del paquete; el contrato deja sustituirla donde ya haya trazabilidad."
 - Create: `src/Privacidad/Modelos/Consentimiento.php`
 - Create: `src/Privacidad/Consentimientos.php`
 - Create: `tests/Privacidad/Fixtures/PersonaDePrueba.php`
-- Create: `tests/Privacidad/Fixtures/migracion_personas_de_prueba.php`
+- Create: `tests/Privacidad/Fixtures/migrations/0001_01_01_000000_create_personas_de_prueba_table.php`
 - Modify: `tests/TestCase.php`
 - Test: `tests/Privacidad/ConsentimientoTest.php`
 
@@ -799,7 +799,12 @@ class PersonaDePrueba extends Model implements TitularDeDatos
 }
 ```
 
-Crear `tests/Privacidad/Fixtures/migracion_personas_de_prueba.php`:
+Crear `tests/Privacidad/Fixtures/migrations/0001_01_01_000000_create_personas_de_prueba_table.php`.
+
+**Importante:** la migración va en un subdirectorio `migrations/` propio y no junto a
+`PersonaDePrueba.php`. `loadMigrationsFrom` recorre *todos* los `.php` del directorio y
+trata cada uno como migración: dejar la clase del modelo ahí revienta la suite entera con
+un error críptico.
 
 ```php
 <?php
@@ -834,7 +839,7 @@ Registrar el fixture en `tests/TestCase.php`, agregando al final de la clase:
 ```php
     protected function defineDatabaseMigrations(): void
     {
-        $this->loadMigrationsFrom(__DIR__.'/Privacidad/Fixtures');
+        $this->loadMigrationsFrom(__DIR__.'/Privacidad/Fixtures/migrations');
     }
 ```
 
