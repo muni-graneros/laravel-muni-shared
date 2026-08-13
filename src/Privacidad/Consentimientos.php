@@ -32,12 +32,13 @@ class Consentimientos
             );
         }
 
-        // Transacción + bloqueo de fila en revocar(): dos otorgar() concurrentes
-        // (doble clic, pestaña duplicada, reintento) no deben poder dejar dos
-        // consentimientos vigentes a la vez, porque entonces nadie podría acreditar
-        // cuál texto aceptó realmente el titular. Y si el registro de evidencia
-        // falla después de crear la fila, todo se revierte: un consentimiento sin
-        // evidencia contradice el propósito del módulo.
+        // La transacción sigue existiendo por la razón 2, no por la 1: si el registro
+        // de evidencia falla después de crear la fila, todo se revierte, porque un
+        // consentimiento sin evidencia contradice el propósito del módulo. Quien
+        // impide dos vigentes a la vez para el mismo (titular, finalidad) es el
+        // índice único sobre `vigente_clave` (ver la migración), no el orden de
+        // llamadas: dos otorgar() concurrentes que ambos intenten insertar la misma
+        // clave chocan en la base de datos, no en la aplicación.
         return DB::transaction(function () use ($titular, $finalidad, $medio, $opciones) {
             // Si había uno vigente, se cierra primero.
             $this->revocar($titular, $finalidad);
@@ -46,6 +47,7 @@ class Consentimientos
                 'titular_type' => $titular::class,
                 'titular_id' => $titular->getKey(),
                 'finalidad_id' => $finalidad->getKey(),
+                'vigente_clave' => $this->claveVigente($titular, $finalidad),
                 'otorgado_en' => now(),
                 'medio' => $medio,
                 'evidencia_path' => $opciones['evidencia_path'] ?? null,
@@ -67,17 +69,15 @@ class Consentimientos
     public function revocar(Model $titular, Finalidad $finalidad): void
     {
         DB::transaction(function () use ($titular, $finalidad) {
-            // lockForUpdate() serializa a los llamantes concurrentes sobre las filas
-            // existentes; bajo SQLite (con el que corren los tests) es un no-op, así
-            // que la suite no prueba el bloqueo en sí, solo que el comportamiento
-            // secuencial sigue intacto.
+            // vigente_clave se limpia junto con revocado_en: las dos columnas se
+            // mueven siempre juntas, o la fila revocada seguiría bloqueando el índice
+            // único e impidiendo que se otorgue un consentimiento nuevo.
             $afectados = Consentimiento::query()
                 ->where('titular_type', $titular::class)
                 ->where('titular_id', $titular->getKey())
                 ->where('finalidad_id', $finalidad->getKey())
                 ->vigentes()
-                ->lockForUpdate()
-                ->update(['revocado_en' => now()]);
+                ->update(['revocado_en' => now(), 'vigente_clave' => null]);
 
             if ($afectados > 0) {
                 $this->evidencia->registrar('consentimiento.revocado', [
@@ -95,5 +95,17 @@ class Consentimientos
             ->where('finalidad_id', $finalidad->getKey())
             ->vigentes()
             ->exists();
+    }
+
+    /**
+     * Identidad determinística de "consentimiento vigente para este (titular,
+     * finalidad)". Se hashea porque `titular_type` es un nombre de clase
+     * completamente calificado y puede exceder el límite de índice único de
+     * MySQL (767 bytes en InnoDB con row_format antiguo); sha1 da un largo fijo
+     * de 40 caracteres, cómodo bajo cualquier backend soportado.
+     */
+    private function claveVigente(Model $titular, Finalidad $finalidad): string
+    {
+        return sha1($titular::class.'|'.$titular->getKey().'|'.$finalidad->getKey());
     }
 }
