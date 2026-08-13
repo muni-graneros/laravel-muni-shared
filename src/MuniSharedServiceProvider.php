@@ -26,10 +26,22 @@ class MuniSharedServiceProvider extends ServiceProvider
         // no en boot() porque la configuración tiene que estar completa antes
         // de que alguien resuelva el mailer.
         $this->mergeConfigFrom(__DIR__.'/../config/correo-graph.php', 'mail.mailers.graph');
+        $this->mergeConfigFrom(__DIR__.'/../config/privacidad.php', 'privacidad');
     }
 
     public function boot(): void
     {
+        // Las migraciones se cargan y no se publican: así, actualizar el paquete
+        // propaga el esquema a los 8 sistemas con un `migrate`, sin un paso de
+        // publicación por repo que alguien va a olvidar.
+        $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
+
+        if ($this->app->runningInConsole()) {
+            $this->publishes([
+                __DIR__.'/../config/privacidad.php' => config_path('privacidad.php'),
+            ], 'privacidad-config');
+        }
+
         $this->registrarCorreoPorGraph();
 
         if ($this->app->runningInConsole()) {
