@@ -51,4 +51,62 @@ class Solicitudes
 
         return $solicitud;
     }
+
+    public function tomar(Solicitud $solicitud): void
+    {
+        $this->exigirPendiente($solicitud);
+
+        $solicitud->update(['estado' => EstadoDeSolicitud::EnTramite]);
+    }
+
+    public function acoger(Solicitud $solicitud, string $fundamento, ?string $respuestaPath = null): void
+    {
+        $this->resolver($solicitud, EstadoDeSolicitud::Acogida, $fundamento, $respuestaPath);
+    }
+
+    public function acogerParcialmente(Solicitud $solicitud, string $fundamento, ?string $respuestaPath = null): void
+    {
+        $this->resolver($solicitud, EstadoDeSolicitud::AcogidaParcial, $fundamento, $respuestaPath);
+    }
+
+    public function rechazar(Solicitud $solicitud, string $fundamento): void
+    {
+        $this->resolver($solicitud, EstadoDeSolicitud::Rechazada, $fundamento);
+    }
+
+    private function resolver(
+        Solicitud $solicitud,
+        EstadoDeSolicitud $estado,
+        string $fundamento,
+        ?string $respuestaPath = null,
+    ): void {
+        $this->exigirPendiente($solicitud);
+
+        if (trim($fundamento) === '') {
+            throw new ResolucionInvalida('Toda resolución debe ir fundada: es lo que se le responde al titular.');
+        }
+
+        $solicitud->update([
+            'estado' => $estado,
+            'resuelta_en' => now(),
+            'fundamento_resolucion' => $fundamento,
+            'respuesta_path' => $respuestaPath,
+            'user_resolucion_id' => Auth::id(),
+        ]);
+
+        $this->evidencia->registrar("solicitud.{$estado->value}", [
+            'solicitud_id' => $solicitud->getKey(),
+            'tipo' => $solicitud->tipo->value,
+        ], $solicitud->titular);
+    }
+
+    private function exigirPendiente(Solicitud $solicitud): void
+    {
+        if ($solicitud->estado->estaResuelta()) {
+            throw new ResolucionInvalida(
+                "La solicitud #{$solicitud->getKey()} ya fue resuelta el "
+                .$solicitud->resuelta_en?->format('d-m-Y').'. Reabrirla falsearía el registro.',
+            );
+        }
+    }
 }
