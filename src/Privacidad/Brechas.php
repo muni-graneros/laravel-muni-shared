@@ -49,6 +49,18 @@ class Brechas
 
     public function notificarAgencia(Brecha $brecha): void
     {
+        // Idempotente por la misma razón que Solicitudes::exigirPendiente():
+        // el hito ya sellado no se vuelve a escribir. Acá la fecha es
+        // exactamente contra lo que un fiscalizador mide el plazo legal desde
+        // la detección, así que un segundo clic en el botón del panel no puede
+        // correrla hacia adelante y convertir un aviso tardío en uno a tiempo.
+        // No se lanza excepción: el doble clic no es un error que valga la pena
+        // mostrarle a quien está gestionando una brecha; simplemente no pasa
+        // nada nuevo, y tampoco se registra nada nuevo.
+        if ($brecha->notificada_agencia_en !== null) {
+            return;
+        }
+
         DB::transaction(function () use ($brecha): void {
             $brecha->update(['notificada_agencia_en' => now()]);
             $this->evidencia->registrar('brecha.notificada_agencia', ['brecha_id' => $brecha->getKey()]);
@@ -57,6 +69,12 @@ class Brechas
 
     public function notificarTitulares(Brecha $brecha): void
     {
+        // Mismo criterio que notificarAgencia(): son dos hitos independientes,
+        // y cada uno se sella una sola vez.
+        if ($brecha->notificada_titulares_en !== null) {
+            return;
+        }
+
         DB::transaction(function () use ($brecha): void {
             $brecha->update(['notificada_titulares_en' => now()]);
             $this->evidencia->registrar('brecha.notificada_titulares', ['brecha_id' => $brecha->getKey()]);

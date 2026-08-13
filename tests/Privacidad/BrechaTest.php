@@ -2,6 +2,7 @@
 
 use Muni\Shared\Privacidad\Brechas;
 use Muni\Shared\Privacidad\Modelos\Brecha;
+use Muni\Shared\Privacidad\Modelos\EntradaBitacora;
 
 it('registra una brecha con su naturaleza y alcance', function () {
     $brecha = app(Brechas::class)->registrar('Acceso indebido a fichas de salud', [
@@ -28,6 +29,39 @@ it('sella las dos notificaciones por separado', function () {
     $servicio->notificarTitulares($brecha);
 
     expect($brecha->refresh()->notificada_titulares_en)->not->toBeNull();
+});
+
+it('re-notificar a la Agencia no mueve la fecha del hito ni duplica la evidencia', function () {
+    // La fecha del hito es contra lo que se mide el plazo legal desde la
+    // detección. Un segundo clic en el panel que la corriera hacia adelante
+    // convertiría un aviso tardío en uno aparentemente a tiempo.
+    $servicio = app(Brechas::class);
+    $brecha = $servicio->registrar('Respaldo extraviado', ['riesgo_alto' => true]);
+
+    $this->travelTo('2026-09-01 09:00:00');
+    $servicio->notificarAgencia($brecha);
+    $sellada = $brecha->refresh()->notificada_agencia_en;
+
+    $this->travelTo('2026-09-20 09:00:00');
+    $servicio->notificarAgencia($brecha->refresh());
+
+    expect($brecha->refresh()->notificada_agencia_en->toDateTimeString())->toBe($sellada->toDateTimeString())
+        ->and(EntradaBitacora::where('evento', 'brecha.notificada_agencia')->count())->toBe(1);
+});
+
+it('re-notificar a los titulares tampoco mueve su hito ni duplica la evidencia', function () {
+    $servicio = app(Brechas::class);
+    $brecha = $servicio->registrar('Respaldo extraviado', ['riesgo_alto' => true]);
+
+    $this->travelTo('2026-09-01 09:00:00');
+    $servicio->notificarTitulares($brecha);
+    $sellada = $brecha->refresh()->notificada_titulares_en;
+
+    $this->travelTo('2026-09-20 09:00:00');
+    $servicio->notificarTitulares($brecha->refresh());
+
+    expect($brecha->refresh()->notificada_titulares_en->toDateTimeString())->toBe($sellada->toDateTimeString())
+        ->and(EntradaBitacora::where('evento', 'brecha.notificada_titulares')->count())->toBe(1);
 });
 
 it('lista las brechas de riesgo alto que aún no se notifican a la Agencia', function () {
