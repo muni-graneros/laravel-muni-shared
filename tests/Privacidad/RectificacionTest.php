@@ -67,6 +67,36 @@ it('si el maestro rechaza el cambio, la solicitud NO queda resuelta', function (
         ->and(EntradaBitacora::where('evento', 'rectificacion.rechazada_por_maestro')->count())->toBe(1);
 });
 
+it('si el propagador lanza, se trata igual que un rechazo y la excepción original sale intacta', function () {
+    // El camino real del ecosistema: SincronizarAlMaestro llama a
+    // $resp->throw() ante cualquier respuesta no exitosa, así que el rechazo
+    // del maestro llega como excepción y NUNCA como false. Si el servicio solo
+    // mirara RectificacionNoPropagada, este caso —el más probable en
+    // producción— dejaría la solicitud sin evidencia y el titular en memoria
+    // con el dato que el maestro no aceptó.
+    app()->bind(PropagaRectificacion::class, fn () => new class implements PropagaRectificacion
+    {
+        public function propagar(Model $titular, array $cambios): bool
+        {
+            throw new RuntimeException('El maestro respondió 422.');
+        }
+    });
+
+    $solicitudConTitular = $this->solicitud->fresh(['titular']);
+    $titularEnMemoria = $solicitudConTitular->titular;
+
+    expect(fn () => app(Rectificaciones::class)->aplicar(
+        $solicitudConTitular,
+        ['nombre' => 'Rocío Paredes'],
+        'Se verifica con cédula.',
+    ))->toThrow(RuntimeException::class, 'El maestro respondió 422.');
+
+    expect($this->titular->refresh()->nombre)->toBe('Rocio Paredez')
+        ->and($titularEnMemoria->nombre)->toBe('Rocio Paredez')
+        ->and($solicitudConTitular->refresh()->estado)->toBe(EstadoDeSolicitud::EnTramite)
+        ->and(EntradaBitacora::where('evento', 'rectificacion.rechazada_por_maestro')->count())->toBe(1);
+});
+
 it('sin propagador enlazado aplica solo local, para sistemas que no hablan con el maestro', function () {
     app(Rectificaciones::class)->aplicar($this->solicitud, ['nombre' => 'Rocío Paredes'], 'Se verifica con cédula.');
 

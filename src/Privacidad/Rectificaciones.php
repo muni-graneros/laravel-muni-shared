@@ -7,6 +7,7 @@ use Muni\Shared\Privacidad\Contratos\PropagaRectificacion;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Contratos\TitularDeDatos;
 use Muni\Shared\Privacidad\Modelos\Solicitud;
+use Throwable;
 
 /**
  * Aplicar una rectificación solo en el sistema local es peor que no aplicarla:
@@ -74,12 +75,24 @@ class Rectificaciones
                     'campos' => array_keys($cambios),
                 ], $titular);
             });
-        } catch (RectificacionNoPropagada $e) {
-            // El rollback revierte la fila, pero no la instancia en memoria que
-            // forceFill() ya mutó: sin este refresh(), un caller que haya
-            // eager-cargado la relación (p. ej. una pantalla de revisión con
-            // Solicitud::with('titular')) seguiría leyendo el valor rechazado.
-            $titular->refresh();
+        } catch (Throwable $e) {
+            // Se atrapa Throwable y no solo RectificacionNoPropagada porque el
+            // rechazo del maestro casi nunca llega como `false`: el transporte
+            // del ecosistema (SincronizarAlMaestro) hace `$resp->throw()` ante
+            // cualquier respuesta no exitosa. Mirando solo la excepción propia,
+            // ni el refresh() ni la evidencia del rechazo correrían justamente
+            // en el caso más frecuente en producción.
+            try {
+                // El rollback revierte la fila, pero no la instancia en memoria que
+                // forceFill() ya mutó: sin este refresh(), un caller que haya
+                // eager-cargado la relación (p. ej. una pantalla de revisión con
+                // Solicitud::with('titular')) seguiría leyendo el valor rechazado.
+                $titular->refresh();
+            } catch (Throwable) {
+                // Si la conexión murió, el refresh también falla. Su error no
+                // puede tapar el que explica por qué no se rectificó: el titular
+                // en memoria queda sucio, pero la causa real sigue viajando.
+            }
 
             // Fuera de la transacción que hizo rollback: si quedara adentro,
             // el propio registro de evidencia del rechazo desaparecería con
@@ -89,6 +102,9 @@ class Rectificaciones
                 'campos' => array_keys($cambios),
             ], $titular);
 
+            // Se relanza tal cual, sin envolverla en RectificacionNoPropagada:
+            // un timeout del maestro y una lista blanca violada son problemas
+            // distintos, y quien atiende el mesón necesita distinguirlos.
             throw $e;
         }
     }

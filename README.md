@@ -97,7 +97,7 @@ PRIVACIDAD_DELEGADO=
 | `TitularDeDatos` | Sí | Cómo se exporta, purga y anonimiza a una persona, y qué campos (`camposRectificables()`) puede corregir mediante el derecho de rectificación — no es un cheque en blanco sobre todo el registro |
 | `ResuelveTitularesVencidos` | Solo si hay retención | Desde cuándo se trata a un titular bajo cada finalidad |
 | `VerificadorIdentidad` | Sí | Cómo se acredita que el solicitante es el titular |
-| `PropagaRectificacion` | Solo si es modelo de lectura del maestro | Que la rectificación no la pise la próxima sincronización |
+| `PropagaRectificacion` | Solo si es modelo de lectura del maestro | Que la rectificación no la pise la próxima sincronización. **Debe ser síncrono**: tiene que conocer la respuesta del maestro antes de devolver. Despachar un job en cola y devolver `true` no es una implementación válida —informa éxito antes de que el maestro haya visto nada—. Devolver `false` o lanzar significan lo mismo: no se propagó |
 | `RegistroDeEvidencia` | No | Sustituir la bitácora propia por la del sistema |
 
 Además, cada sistema siembra sus finalidades: es donde declara qué trata, con
