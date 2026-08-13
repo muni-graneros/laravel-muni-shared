@@ -66,6 +66,13 @@ it('ignora finalidades sin plazo de retención', function () {
     expect($this->vencida->refresh()->diagnostico)->toBe('dato sensible de salud');
 });
 
+it('ignora finalidades inactivas', function () {
+    $this->finalidad->update(['activa' => false]);
+
+    expect(app(AplicarRetencion::class)->ejecutar(simulacion: false))->toBe([]);
+    expect($this->vencida->refresh()->diagnostico)->toBe('dato sensible de salud');
+});
+
 it('el comando no toca nada sin --ejecutar', function () {
     $this->artisan('privacidad:aplicar-retencion')
         ->expectsOutputToContain('simulación')

@@ -8,8 +8,6 @@ use Muni\Shared\Privacidad\Modelos\Finalidad;
  * Cada sistema sabe desde cuándo trata a un titular bajo una finalidad: puede
  * ser la fecha de registro, la última atención o el cierre del caso. El módulo
  * no puede adivinarlo, así que lo pregunta.
- *
- * @method iterable<int, TitularDeDatos> vencidos(Finalidad $finalidad)
  */
 interface ResuelveTitularesVencidos
 {

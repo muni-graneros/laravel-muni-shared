@@ -3,6 +3,7 @@
 namespace Muni\Shared\Privacidad;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Facades\DB;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Contratos\ResuelveTitularesVencidos;
 use Muni\Shared\Privacidad\Contratos\TitularDeDatos;
@@ -59,12 +60,24 @@ class AplicarRetencion
         // El orden importa: primero se borra lo sensible, después se anonimiza.
         // Al revés, el registro anonimizado podría conservar el archivo sensible
         // sin nadie a quien asociarlo para borrarlo después.
-        $titular->purgarDatosSensibles();
-        $titular->anonimizar();
+        //
+        // La transacción cubre las dos escrituras de fila y la evidencia: si
+        // anonimizar() o el registro de evidencia fallan, ambas se revierten y
+        // no queda un dato purgado sin bitácora que pruebe que la supresión fue
+        // lícita. Lo que la transacción NO cubre son los archivos en disco que
+        // purgarDatosSensibles() borra: un rollback de base de datos no
+        // restaura un archivo eliminado. Por eso el orden sigue siendo
+        // load-bearing incluso con la transacción: si algo falla después de
+        // purgar, el archivo ya no está aunque la fila vuelva a su estado
+        // anterior.
+        DB::transaction(function () use ($titular, $finalidad): void {
+            $titular->purgarDatosSensibles();
+            $titular->anonimizar();
 
-        $this->evidencia->registrar('retencion.aplicada', [
-            'finalidad' => $finalidad->codigo,
-            'plazo_meses' => $finalidad->plazo_retencion_meses,
-        ], $titular instanceof Model ? $titular : null);
+            $this->evidencia->registrar('retencion.aplicada', [
+                'finalidad' => $finalidad->codigo,
+                'plazo_meses' => $finalidad->plazo_retencion_meses,
+            ], $titular instanceof Model ? $titular : null);
+        });
     }
 }
