@@ -103,6 +103,18 @@ PRIVACIDAD_DELEGADO=
 Además, cada sistema siembra sus finalidades: es donde declara qué trata, con
 qué base y por cuánto tiempo.
 
+### Atender un acceso o una portabilidad
+
+```php
+$datos = app(ExportacionDeDatos::class)->paraSolicitud($solicitud);
+```
+
+`paraSolicitud()` es la entrada a usar desde el panel: toma el titular de la
+solicitud —que ya pasó por la verificación de identidad al registrarse—, rechaza
+los tipos que no dan derecho a la copia y deja la entrega en `privacidad_bitacora`.
+`paraTitular()` no verifica nada ni registra nada: cablearla a una acción que
+recibe un id del request es un IDOR sin rastro.
+
 ### Comandos
 
 ```bash

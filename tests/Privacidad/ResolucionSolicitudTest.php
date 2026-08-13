@@ -62,6 +62,39 @@ it('no permite resolver dos veces la misma solicitud', function () {
         ->toThrow(ResolucionInvalida::class);
 });
 
+it('exportar desde la solicitud deja evidencia con los campos, nunca con los valores', function () {
+    $datos = app(ExportacionDeDatos::class)->paraSolicitud($this->solicitud);
+
+    $entrada = EntradaBitacora::where('evento', 'datos.exportados')->sole();
+
+    expect($datos['datos'])->toBe(['nombre' => 'Rocío Paredes', 'documento' => '11.111.111-1'])
+        ->and($entrada->datos)->toBe([
+            'solicitud_id' => $this->solicitud->id,
+            'tipo' => 'acceso',
+            'campos' => ['nombre', 'documento'],
+        ])
+        // La entrega del expediente completo queda ligada al titular concreto:
+        // sin eso no hay forma de reconstruir a quién se le entregó qué.
+        ->and($entrada->titular_id)->toBe($this->titular->id);
+});
+
+it('no exporta el expediente por una solicitud que no es de acceso ni de portabilidad', function () {
+    // Una solicitud de supresión no habilita a llevarse la copia de los datos:
+    // si el tipo no se verificara, cualquier solicitud registrada sería una
+    // llave universal al expediente completo.
+    $supresion = $this->servicio->registrar(
+        $this->titular,
+        TipoDeSolicitud::Supresion,
+        'Bórrenme del registro',
+        new ResultadoVerificacion(true, 'cedula_presencial'),
+    );
+
+    expect(fn () => app(ExportacionDeDatos::class)->paraSolicitud($supresion))
+        ->toThrow(ResolucionInvalida::class);
+
+    expect(EntradaBitacora::where('evento', 'datos.exportados')->count())->toBe(0);
+});
+
 it('exporta los datos personales del titular para acceso y portabilidad', function () {
     $datos = app(ExportacionDeDatos::class)->paraTitular($this->titular);
 
