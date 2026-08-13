@@ -64,6 +64,32 @@ it('re-notificar a los titulares tampoco mueve su hito ni duplica la evidencia',
         ->and(EntradaBitacora::where('evento', 'brecha.notificada_titulares')->count())->toBe(1);
 });
 
+it('una instancia obsoleta no puede pisar el hito ya sellado', function () {
+    // El caso real que el guard en memoria no cubría: dos requests concurrentes
+    // (o una pestaña abierta desde antes) traen cada una su propia copia del
+    // modelo con el hito en null. Preguntando por la copia, las dos pasan y la
+    // segunda corre la fecha. La condición tiene que viajar en el UPDATE.
+    $servicio = app(Brechas::class);
+    $brecha = $servicio->registrar('Respaldo extraviado', ['riesgo_alto' => true]);
+
+    // Cargada ANTES del sello: para esta instancia el hito sigue pendiente.
+    $obsoleta = Brecha::findOrFail($brecha->getKey());
+
+    $this->travelTo('2026-09-01 09:00:00');
+    $servicio->notificarAgencia($brecha);
+    $sellada = $brecha->refresh()->notificada_agencia_en;
+
+    $this->travelTo('2026-09-20 09:00:00');
+    expect($obsoleta->notificada_agencia_en)->toBeNull(); // su copia todavía dice pendiente
+    $servicio->notificarAgencia($obsoleta);
+
+    expect(Brecha::findOrFail($brecha->getKey())->notificada_agencia_en->toDateTimeString())
+        ->toBe($sellada->toDateTimeString())
+        ->and(EntradaBitacora::where('evento', 'brecha.notificada_agencia')->count())->toBe(1)
+        // Y la instancia obsoleta queda al día, no mostrando el hito pendiente.
+        ->and($obsoleta->notificada_agencia_en->toDateTimeString())->toBe($sellada->toDateTimeString());
+});
+
 it('lista las brechas de riesgo alto que aún no se notifican a la Agencia', function () {
     $servicio = app(Brechas::class);
     $servicio->registrar('Sin notificar', ['riesgo_alto' => true]);

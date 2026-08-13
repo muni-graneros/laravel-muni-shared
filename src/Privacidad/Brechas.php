@@ -49,35 +49,52 @@ class Brechas
 
     public function notificarAgencia(Brecha $brecha): void
     {
-        // Idempotente por la misma razón que Solicitudes::exigirPendiente():
-        // el hito ya sellado no se vuelve a escribir. Acá la fecha es
-        // exactamente contra lo que un fiscalizador mide el plazo legal desde
-        // la detección, así que un segundo clic en el botón del panel no puede
-        // correrla hacia adelante y convertir un aviso tardío en uno a tiempo.
-        // No se lanza excepción: el doble clic no es un error que valga la pena
-        // mostrarle a quien está gestionando una brecha; simplemente no pasa
-        // nada nuevo, y tampoco se registra nada nuevo.
-        if ($brecha->notificada_agencia_en !== null) {
-            return;
-        }
-
-        DB::transaction(function () use ($brecha): void {
-            $brecha->update(['notificada_agencia_en' => now()]);
-            $this->evidencia->registrar('brecha.notificada_agencia', ['brecha_id' => $brecha->getKey()]);
-        });
+        // La fecha del hito es exactamente contra lo que un fiscalizador mide
+        // el plazo legal desde la detección: un segundo clic en el panel no
+        // puede correrla hacia adelante y convertir un aviso tardío en uno a
+        // tiempo. No se lanza excepción —el doble clic no es un error que valga
+        // la pena mostrarle a quien está gestionando una brecha—, simplemente
+        // no pasa nada nuevo y tampoco se registra nada nuevo.
+        $this->sellar($brecha, 'notificada_agencia_en', 'brecha.notificada_agencia');
     }
 
     public function notificarTitulares(Brecha $brecha): void
     {
         // Mismo criterio que notificarAgencia(): son dos hitos independientes,
         // y cada uno se sella una sola vez.
-        if ($brecha->notificada_titulares_en !== null) {
-            return;
-        }
+        $this->sellar($brecha, 'notificada_titulares_en', 'brecha.notificada_titulares');
+    }
 
-        DB::transaction(function () use ($brecha): void {
-            $brecha->update(['notificada_titulares_en' => now()]);
-            $this->evidencia->registrar('brecha.notificada_titulares', ['brecha_id' => $brecha->getKey()]);
+    /**
+     * Sella un hito de notificación una sola vez, de verdad.
+     *
+     * El candado NO puede ser `if ($brecha->$columna !== null) return;`: eso
+     * pregunta por la copia en memoria que recibió el método, y dos requests
+     * concurrentes —o una pestaña abierta desde antes— traen cada una su propia
+     * instancia con el hito todavía en null, pasan las dos y la segunda pisa la
+     * fecha. Es el mismo doble clic que se quería evitar, sólo que más difícil
+     * de reproducir. La condición viaja dentro del UPDATE (`whereNull`), que la
+     * base resuelve de forma atómica, y el conteo de filas afectadas es lo que
+     * decide si corresponde escribir evidencia.
+     */
+    private function sellar(Brecha $brecha, string $columna, string $evento): void
+    {
+        DB::transaction(function () use ($brecha, $columna, $evento): void {
+            $selladas = Brecha::query()
+                ->whereKey($brecha->getKey())
+                ->whereNull($columna)
+                ->update([$columna => now()]);
+
+            if ($selladas === 0) {
+                return;
+            }
+
+            $this->evidencia->registrar($evento, ['brecha_id' => $brecha->getKey()]);
         });
+
+        // La instancia que trajo quien llama queda con la fecha real —la del
+        // sello, sea de esta llamada o de la que ganó la carrera—, para que el
+        // panel no siga mostrando el hito pendiente después de notificarlo.
+        $brecha->refresh();
     }
 }

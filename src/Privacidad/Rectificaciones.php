@@ -24,6 +24,14 @@ class Rectificaciones
     /** @param array<string, mixed> $cambios */
     public function aplicar(Solicitud $solicitud, array $cambios, string $fundamento): void
     {
+        // Estas tres son fallas de lo que pidió quien llama, no de la propagación:
+        // van como ResolucionInvalida —el tipo que el módulo ya usa para
+        // "esta solicitud no se puede resolver así"— y no como
+        // RectificacionNoPropagada, que significa una sola cosa muy concreta:
+        // el maestro de personas no aceptó el cambio. Quien atrape esa clase
+        // para reaccionar al rechazo del maestro no puede recibir además los
+        // formularios mal armados.
+        //
         // Dos formas de acoger una rectificación que nunca ocurrió: resolver
         // como rectificada una solicitud que pedía otra cosa (una supresión
         // queda "acogida" sin haberse suprimido nada), o acoger una lista de
@@ -31,17 +39,26 @@ class Rectificaciones
         // no tocó ningún dato. Las dos terminan en el mismo lugar: un registro
         // que dice que el municipio corrigió algo que sigue igual.
         if ($solicitud->tipo !== TipoDeSolicitud::Rectificacion) {
-            throw new RectificacionNoPropagada(
+            throw new ResolucionInvalida(
                 "La solicitud #{$solicitud->getKey()} es de tipo «{$solicitud->tipo->etiqueta()}»: "
                 .'solo una solicitud de rectificación se resuelve rectificando.',
             );
         }
 
         if ($cambios === []) {
-            throw new RectificacionNoPropagada(
+            throw new ResolucionInvalida(
                 "La solicitud #{$solicitud->getKey()} no trae ningún cambio que aplicar: "
                 .'acogerla certificaría una corrección que no se hizo.',
             );
+        }
+
+        // El mismo requisito que exige Solicitudes::resolver(), pero comprobado
+        // ACÁ y antes de tomar(): si se dejara llegar hasta acoger(), la
+        // excepción saldría desde dentro de la transacción y el catch de abajo
+        // la archivaría como una falla de la rectificación, cuando lo único que
+        // pasó es que el formulario iba sin fundamento.
+        if (trim($fundamento) === '') {
+            throw new ResolucionInvalida('Toda resolución debe ir fundada: es lo que se le responde al titular.');
         }
 
         $titular = $solicitud->titular;
@@ -100,27 +117,47 @@ class Rectificaciones
             // rechazo del maestro casi nunca llega como `false`: el transporte
             // del ecosistema (SincronizarAlMaestro) hace `$resp->throw()` ante
             // cualquier respuesta no exitosa. Mirando solo la excepción propia,
-            // ni el refresh() ni la evidencia del rechazo correrían justamente
-            // en el caso más frecuente en producción.
+            // ni los refresh() ni la evidencia correrían justamente en el caso
+            // más frecuente en producción.
+            //
+            // Todo el rescate va en un solo try: pase lo que pase acá adentro,
+            // lo que tiene que salir de este método es $e. Antes el registro de
+            // evidencia quedaba fuera del guard y, con la conexión caída,
+            // reemplazaba a la excepción original —exactamente lo que el guard
+            // existía para impedir—.
             try {
-                // El rollback revierte la fila, pero no la instancia en memoria que
-                // forceFill() ya mutó: sin este refresh(), un caller que haya
-                // eager-cargado la relación (p. ej. una pantalla de revisión con
-                // Solicitud::with('titular')) seguiría leyendo el valor rechazado.
-                $titular->refresh();
-            } catch (Throwable) {
-                // Si la conexión murió, el refresh también falla. Su error no
-                // puede tapar el que explica por qué no se rectificó: el titular
-                // en memoria queda sucio, pero la causa real sigue viajando.
-            }
+                // Primero la evidencia, que es lo único irrecuperable: los dos
+                // refresh() de abajo solo arreglan objetos en memoria de una
+                // request que ya se está muriendo.
+                //
+                // El evento NO se llama "rechazada_por_maestro": desde acá se ve
+                // cualquier falla de la transacción —un choque de constraint, la
+                // caída del registro de evidencia local— y archivar todas como
+                // un rechazo del maestro sería escribir en la bitácora algo que
+                // no pasó. Peor aún cuando propagar() devolvió true: ahí el
+                // maestro SÍ aceptó y tiene el dato corregido, y el registro
+                // legal diría lo contrario. Se guarda la clase de la excepción,
+                // nunca su mensaje: un mensaje puede arrastrar el dato personal
+                // que este módulo existe para no duplicar.
+                $this->evidencia->registrar('rectificacion.fallida', [
+                    'solicitud_id' => $solicitud->getKey(),
+                    'campos' => array_keys($cambios),
+                    'causa' => $e::class,
+                    'rechazada_por_maestro' => $e instanceof RectificacionNoPropagada,
+                ], $titular);
 
-            // Fuera de la transacción que hizo rollback: si quedara adentro,
-            // el propio registro de evidencia del rechazo desaparecería con
-            // ella, y este es justamente el caso que no puede quedar sin rastro.
-            $this->evidencia->registrar('rectificacion.rechazada_por_maestro', [
-                'solicitud_id' => $solicitud->getKey(),
-                'campos' => array_keys($cambios),
-            ], $titular);
+                // El rollback revierte las filas, pero no las instancias en memoria
+                // que ya se mutaron: sin estos refresh(), un caller que haya
+                // eager-cargado la relación (p. ej. una pantalla de revisión con
+                // Solicitud::with('titular')) seguiría leyendo el valor rechazado,
+                // y la solicitud seguiría diciendo "acogida" cuando en la base
+                // volvió a "en trámite".
+                $titular->refresh();
+                $solicitud->refresh();
+            } catch (Throwable) {
+                // Si la conexión murió, el rescate también falla. Su error no
+                // puede tapar el que explica por qué no se rectificó.
+            }
 
             // Se relanza tal cual, sin envolverla en RectificacionNoPropagada:
             // un timeout del maestro y una lista blanca violada son problemas

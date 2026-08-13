@@ -104,9 +104,13 @@ class Consentimientos
      * (767 bytes en InnoDB con row_format antiguo); sha1 da un largo fijo de 40
      * caracteres, cómodo bajo cualquier backend soportado.
      *
-     * Usa la misma fuente que la columna `titular_type` —getMorphClass()— y no
-     * `::class`: si las dos no coinciden, revocar() dejaría de encontrar la fila
-     * que la clave está bloqueando en el índice único.
+     * Se deriva de getMorphClass() y no de `::class` por la misma razón que la
+     * columna `titular_type`: bajo un morph map que mapea varias clases al mismo
+     * alias, una clave hecha con el FQCN haría que la unicidad se calculara POR
+     * CLASE mientras revocar() y vigente() —que filtran por la columna— operan
+     * POR ALIAS. El índice dejaría entrar dos filas vigentes para el mismo
+     * (titular, finalidad) desde dos clases distintas, que es exactamente el
+     * estado que ese índice existe para hacer imposible.
      */
     private function claveVigente(Model $titular, Finalidad $finalidad): string
     {
