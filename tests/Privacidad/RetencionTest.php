@@ -87,6 +87,38 @@ it('el comando con --ejecutar aplica la retención', function () {
     expect($this->vencida->refresh()->nombre)->toBe('ANONIMIZADO');
 });
 
+it('avisa cuando el sistema no declaró ninguna finalidad con plazo de retención', function () {
+    // Sin finalidades con plazo, el comando no recorre nada. Decir solo "no hay
+    // vencidos" haría pasar por cumplimiento lo que en realidad es un sistema
+    // sin política de retención sembrada.
+    $this->finalidad->update(['plazo_retencion_meses' => null]);
+
+    $this->artisan('privacidad:aplicar-retencion')
+        ->expectsOutputToContain('no declaró ninguna finalidad vigente con plazo de retención')
+        ->assertSuccessful();
+});
+
+it('avisa cuando el sistema no implementó el resolvedor de titulares vencidos', function () {
+    app()->forgetInstance(ResuelveTitularesVencidos::class);
+    app()->bind(ResuelveTitularesVencidos::class, NingunTitularVencido::class);
+
+    $this->artisan('privacidad:aplicar-retencion')
+        ->expectsOutputToContain('la retención NO está operativa')
+        ->assertSuccessful();
+});
+
+it('no avisa de nada cuando la retención sí está operativa y simplemente no hay vencidos', function () {
+    // El aviso tiene que ser señal, no ruido de fondo: un sistema bien
+    // configurado y sin vencidos no debe imprimir advertencias, o el cron diario
+    // enseña a ignorarlas.
+    $this->vencida->update(['tratamiento_iniciado_en' => now()]);
+
+    $this->artisan('privacidad:aplicar-retencion')
+        ->doesntExpectOutputToContain('no declaró ninguna finalidad')
+        ->doesntExpectOutputToContain('NO está operativa')
+        ->assertSuccessful();
+});
+
 it('un sistema que no implementó el resolvedor no purga nada en vez de reventar', function () {
     // Se deshace el enlace del beforeEach para simular un sistema recién instalado.
     app()->forgetInstance(ResuelveTitularesVencidos::class);
