@@ -19,6 +19,7 @@ class AplicarRetencion
     public function __construct(
         private readonly RegistroDeEvidencia $evidencia,
         private readonly ResuelveTitularesVencidos $resolvedor,
+        private readonly Bitacora $bitacora,
     ) {}
 
     /**
@@ -73,6 +74,13 @@ class AplicarRetencion
         DB::transaction(function () use ($titular, $finalidad): void {
             $titular->purgarDatosSensibles();
             $titular->anonimizar();
+
+            // Después de anonimizar y antes de la entrada de evidencia: al revés,
+            // esa entrada quedaría huérfana también y se perdería la traza de que
+            // la retención se aplicó a alguien.
+            if ($titular instanceof Model) {
+                $this->bitacora->desvincular($titular);
+            }
 
             $this->evidencia->registrar('retencion.aplicada', [
                 'finalidad' => $finalidad->codigo,

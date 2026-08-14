@@ -8,6 +8,7 @@ use Muni\Shared\Privacidad\BitacoraInmutable;
 
 /**
  * @property array<string, mixed>|null $datos
+ * @property string|null $titular_ref
  */
 class EntradaBitacora extends Model
 {
