@@ -75,17 +75,25 @@ class AplicarRetencion
             $titular->purgarDatosSensibles();
             $titular->anonimizar();
 
-            // Después de anonimizar y antes de la entrada de evidencia: al revés,
-            // esa entrada quedaría huérfana también y se perdería la traza de que
-            // la retención se aplicó a alguien.
-            if ($titular instanceof Model) {
-                $this->bitacora->desvincular($titular);
-            }
-
+            // La entrada de evidencia se registra ANTES de desvincular, no
+            // después. Registrarla después dejaría, dentro de la misma
+            // transacción, una fila con titular_id vivo justo al lado de la
+            // que dice titular_ref en texto plano: ids consecutivos, mismo
+            // user_id, mismo instante — un join de dos saltos que en este
+            // ecosistema resuelve a una identidad en el maestro de personas
+            // federado, aunque el registro local ya esté anonimizado. Escrita
+            // antes, esta misma entrada queda barrida por el UPDATE de
+            // desvincular() de abajo: sigue existiendo, sigue diciendo
+            // "retencion.aplicada", se puede seguir contando — lo único que
+            // se pierde es a quién, que es exactamente el punto.
             $this->evidencia->registrar('retencion.aplicada', [
                 'finalidad' => $finalidad->codigo,
                 'plazo_meses' => $finalidad->plazo_retencion_meses,
             ], $titular instanceof Model ? $titular : null);
+
+            if ($titular instanceof Model) {
+                $this->bitacora->desvincular($titular);
+            }
         });
     }
 }

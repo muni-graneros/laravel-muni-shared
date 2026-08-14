@@ -2,6 +2,7 @@
 
 use Muni\Shared\Privacidad\AplicarRetencion;
 use Muni\Shared\Privacidad\BaseLicitud;
+use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Contratos\ResuelveTitularesVencidos;
 use Muni\Shared\Privacidad\Modelos\EntradaBitacora;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
@@ -57,6 +58,29 @@ it('al ejecutar purga los sensibles y anonimiza, dejando evidencia', function ()
         ->and($this->vencida->nombre)->toBe('ANONIMIZADO')
         ->and($this->vencida->documento)->toBeNull()
         ->and(EntradaBitacora::where('evento', 'retencion.aplicada')->count())->toBe(1);
+});
+
+it('al ejecutar desvincula la bitácora previa del titular y la propia entrada de retención', function () {
+    // Camino de producción end-to-end: si alguien borra la llamada a
+    // desvincular() dentro de AplicarRetencion::aplicarA(), este test es el
+    // que lo detecta — los unitarios de Bitacora nunca pasan por acá.
+    app(RegistroDeEvidencia::class)->registrar('solicitud.registrada', ['x' => 1], $this->vencida);
+    app(RegistroDeEvidencia::class)->registrar('solicitud.acogida', ['y' => 2], $this->vencida);
+
+    app(AplicarRetencion::class)->ejecutar(simulacion: false);
+
+    // Barridas por el UPDATE de desvincular(): las dos previas más la propia
+    // 'retencion.aplicada', todas agrupadas bajo la misma referencia aleatoria.
+    $huerfanas = EntradaBitacora::whereNotNull('titular_ref')->get();
+
+    expect($huerfanas)->toHaveCount(3)
+        ->and($huerfanas->pluck('titular_ref')->unique())->toHaveCount(1)
+        ->and($huerfanas->pluck('evento')->sort()->values()->all())->toBe([
+            'retencion.aplicada',
+            'solicitud.acogida',
+            'solicitud.registrada',
+        ])
+        ->and(EntradaBitacora::whereNotNull('titular_id')->count())->toBe(0);
 });
 
 it('ignora finalidades sin plazo de retención', function () {
