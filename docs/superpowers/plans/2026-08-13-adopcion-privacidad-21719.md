@@ -60,18 +60,32 @@ En `composer.json`, dentro de `repositories`, **antes** de la entrada `muni-shar
 }
 ```
 
-Y subir la restricción de versión:
+Y cambiar la restricción de versión a un alias de rama:
 
 ```json
-"muni-graneros/laravel-muni-shared": "^1.12"
+"muni-graneros/laravel-muni-shared": "dev-main as 1.12.0"
 ```
+
+**Por qué el alias y no `^1.12`:** el `composer.json` del paquete no declara un
+campo `version`, así que un repositorio `path` lo publica como `dev-main` (el
+nombre de la rama) y **`^1.12` no calzaría nunca**. El `as 1.12.0` deja además
+escrito qué versión se está probando, para cuando se revierta a la publicada.
 
 - [ ] **Step 2: Instalar**
 
 Run: `composer update muni-graneros/laravel-muni-shared --no-interaction`
-Expected: instala `v1.12.x` desde `../laravel-muni-shared` (Composer lo reporta como `Symlinking`).
+Expected: Composer reporta `Symlinking` desde `../laravel-muni-shared`.
 
-Si falla por restricción de versión, revisar que `main` de `laravel-muni-shared` tenga el módulo: `git -C ../laravel-muni-shared log --oneline -1` debe mostrar el merge del módulo Privacidad.
+Verificar que llegó el módulo, no solo el paquete:
+
+```bash
+ls vendor/muni-graneros/laravel-muni-shared/src/Privacidad/
+```
+
+Expected: `Contratos/`, `Modelos/`, `Console/`, `AplicarRetencion.php`, `Consentimientos.php`, `Solicitudes.php`, `Rectificaciones.php`, `Brechas.php`, `ExportacionDeDatos.php`.
+
+Si el directorio no existe, `main` de `laravel-muni-shared` no tiene el módulo:
+`git -C ../laravel-muni-shared log --oneline -1` debe mostrar el merge.
 
 - [ ] **Step 3: Migrar contra la base de pruebas y verificar las seis tablas**
 
