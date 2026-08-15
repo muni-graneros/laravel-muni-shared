@@ -86,6 +86,15 @@ class AplicarRetencion
             // desvincular() de abajo: sigue existiendo, sigue diciendo
             // "retencion.aplicada", se puede seguir contando — lo único que
             // se pierde es a quién, que es exactamente el punto.
+            //
+            // Barrida, pero SIN referencia de grupo: esta fila nace dentro de
+            // la anonimización y lleva su hora exacta, la misma que anonimizar()
+            // acaba de congelar en la persona. Ponerle el titular_ref
+            // encadenaría ese instante con todas las demás filas huérfanas del
+            // caso. De eso se encarga la ventana de Bitacora::desvincular(); no
+            // hace falta hacer nada acá, pero sí saberlo antes de mover esta
+            // llamada o de agregar otra evidencia con titular en esta
+            // transacción.
             $this->evidencia->registrar('retencion.aplicada', [
                 'finalidad' => $finalidad->codigo,
                 'plazo_meses' => $finalidad->plazo_retencion_meses,

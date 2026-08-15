@@ -113,6 +113,30 @@ class Bitacora
             // se necesita opacidad.
             $ref = Str::random(32);
 
+            // Frontera entre «esto ya existía» y «esto nació dentro de la
+            // anonimización».
+            //
+            // Una fila escrita dentro de esta misma transacción lleva estampada
+            // la hora exacta en que se anonimizó, y esa hora queda congelada en
+            // `personas.updated_at` del sistema consumidor porque nadie vuelve a
+            // escribir esa fila nunca más. Darle el ref a esa fila publica el
+            // identificador de grupo justo al lado del instante: se busca a la
+            // persona por su updated_at, se cae en la fila de ese segundo y de
+            // ahí se leen TODAS sus filas huérfanas, en las cuatro tablas. Es la
+            // misma correlación que abría el ULID, entrando por otra puerta.
+            // Esas filas se desvinculan igual —pierden el titular_id y el texto
+            // libre—, pero se quedan fuera del grupo.
+            //
+            // startOfSecond() es explícito, no load-bearing: hoy los drivers
+            // formatean el binding como 'Y-m-d H:i:s' y ya descartan los
+            // microsegundos, así que comparar contra now() da lo mismo (se
+            // comprobó mutando esta línea: la suite queda verde). Se deja
+            // escrito igual porque el que la comparación funcione no debería
+            // depender de un detalle del grammar: con columnas de precisión
+            // mayor, o con otro driver, la frontera tiene que seguir siendo el
+            // segundo en curso.
+            $ventana = now()->startOfSecond();
+
             $afectadas = 0;
 
             // Por query builder a propósito: el modelo de la bitácora es
@@ -124,18 +148,39 @@ class Bitacora
             // qué tipo de sujeto trataba la fila. Se deja para no perder ese
             // contexto sin ganar nada en anonimización.
             foreach (self::TABLAS as $tabla => $aSuprimir) {
-                $afectadas += DB::table($tabla)
+                $delTitular = fn () => DB::table($tabla)
                     ->where('titular_type', $titular->getMorphClass())
-                    ->where('titular_id', $titular->getKey())
+                    ->where('titular_id', $titular->getKey());
+
+                // La historia normal: hechos de negocio con fechas de negocio.
+                // Estas sí se agrupan bajo el ref, que es lo que permite seguir
+                // leyendo un caso completo sin saber de quién era.
+                $afectadas += $delTitular()
+                    ->where('created_at', '<', $ventana)
                     ->update(['titular_id' => null, 'titular_ref' => $ref] + $aSuprimir);
+
+                // Lo nacido dentro de la anonimización, y también lo que no
+                // tenga fecha: sin fecha no hay forma de descartar que sea de
+                // este instante, y equivocarse hacia «sin ref» solo cuesta
+                // agrupación, mientras que equivocarse al revés reabre la
+                // correlación.
+                $afectadas += $delTitular()
+                    ->where(fn ($fila) => $fila->whereNull('created_at')->orWhere('created_at', '>=', $ventana))
+                    ->update(['titular_id' => null, 'titular_ref' => null] + $aSuprimir);
             }
 
             if ($afectadas > 0) {
                 // Esta entrada se escribe DESPUÉS del barrido y sin titular: si
                 // se escribiera antes, quedaría barrida ella misma y se perdería
-                // la constancia. Lo que sí es cierto del ref que viaja acá en
-                // texto plano es que, terminada la transacción, ninguna fila del
-                // módulo que lo comparta conserva un titular_id.
+                // la constancia.
+                //
+                // El ref NO viaja en este payload, aunque agrupar sería cómodo
+                // para depurar. Esta fila se escribe en el instante exacto de la
+                // anonimización: publicar acá el ref sería exactamente lo que
+                // evita la ventana de arriba —el instante y el identificador de
+                // grupo, juntos y en texto plano—. Queda el conteo, que es el
+                // hecho auditable («se desvincularon N filas»); a qué caso
+                // pertenecían no lo dice nadie, y ese es el punto.
                 //
                 // El alcance exacto, para que nadie lea de más: se cortan los
                 // punteros al titular, se suprimen las columnas de texto libre
@@ -148,7 +193,6 @@ class Bitacora
                 // antes en AplicarRetencion.
                 $this->evidencia->registrar('bitacora.desvinculada', [
                     'filas' => $afectadas,
-                    'titular_ref' => $ref,
                 ]);
             }
 

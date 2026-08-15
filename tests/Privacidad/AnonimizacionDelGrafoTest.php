@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
@@ -61,6 +62,25 @@ function columnasDeTextoLibre(): array
     return collect(tablasDelModuloConTitular())
         ->mapWithKeys(fn (string $tabla) => [$tabla => collect(Schema::getColumns($tabla))
             ->filter(fn (array $columna) => in_array(strtolower((string) $columna['type_name']), $tiposDeTexto, true))
+            ->pluck('name')
+            ->sort()
+            ->values()
+            ->all(), ])
+        ->all();
+}
+
+/**
+ * Columnas de fecha de cada tabla barrida, leídas del esquema.
+ *
+ * @return array<string, list<string>>
+ */
+function columnasDeFecha(): array
+{
+    $tiposDeFecha = ['datetime', 'timestamp', 'date', 'timestamptz', 'datetimetz'];
+
+    return collect(tablasDelModuloConTitular())
+        ->mapWithKeys(fn (string $tabla) => [$tabla => collect(Schema::getColumns($tabla))
+            ->filter(fn (array $columna) => in_array(strtolower((string) $columna['type_name']), $tiposDeFecha, true))
             ->pluck('name')
             ->sort()
             ->values()
@@ -150,8 +170,14 @@ beforeEach(function () {
     // Direcciones distintas a propósito: si las dos personas compartieran el
     // texto, la búsqueda de identificadores del test no podría distinguir un
     // dato que sobrevivió de uno que es de la persona vigente.
+    // La historia ocurre meses antes de la anonimización, como en la vida real.
+    // Importa para el test: una fila escrita en el mismo segundo que la
+    // anonimización queda huérfana SIN referencia de grupo, justamente porque su
+    // fecha delataría el instante en que se anonimizó a la persona.
+    $this->travelTo(now()->subMonths(2));
     $historia($this->titular, $this->ip = '192.168.10.44', $this->direccion = 'Av. Freire 123');
     $historia($this->vigente, '192.168.10.99', 'Pasaje Los Aromos 987');
+    $this->travelBack();
 
     $vencido = $this->titular->getKey();
 
@@ -308,6 +334,44 @@ it('ninguna columna de una tabla barrida conserva un identificador del titular',
     app(AplicarRetencion::class)->ejecutar(simulacion: false);
 
     expect($buscar())->toBe([]);
+});
+
+it('ninguna fila con referencia lleva una fecha del instante de la anonimización', function () {
+    // El ataque que esto cierra, en tres pasos y sin ningún join exótico:
+    // se buscan las personas anonimizadas por su marca («ANONIMIZADO»), se lee
+    // su `updated_at` —congelado, porque nadie vuelve a escribir esa fila—, y
+    // se busca la fila del módulo de ese mismo segundo. Si esa fila lleva el
+    // titular_ref, ahí termina el anonimato: con el ref se leen todas las demás
+    // filas huérfanas de la persona, en las cuatro tablas.
+    //
+    // Por eso el ref solo puede vivir en filas cuyas fechas son hechos de
+    // negocio corrientes, anteriores a la anonimización.
+    $anonimizacion = now()->startOfSecond();
+
+    app(AplicarRetencion::class)->ejecutar(simulacion: false);
+
+    $conFechaDelInstante = [];
+    $conRef = 0;
+
+    foreach (columnasDeFecha() as $tabla => $columnas) {
+        foreach (DB::table($tabla)->whereNotNull('titular_ref')->get() as $fila) {
+            $conRef++;
+
+            foreach ($columnas as $columna) {
+                if ($fila->{$columna} === null) {
+                    continue;
+                }
+
+                if (Carbon::parse($fila->{$columna})->greaterThanOrEqualTo($anonimizacion)) {
+                    $conFechaDelInstante[] = "{$tabla}.{$columna}";
+                }
+            }
+        }
+    }
+
+    // Si ninguna fila llevara ref, el test pasaría sin comprobar nada.
+    expect($conRef)->toBeGreaterThan(5)
+        ->and(array_values(array_unique($conFechaDelInstante)))->toBe([]);
 });
 
 it('toda columna de texto libre de una tabla barrida está clasificada', function () {

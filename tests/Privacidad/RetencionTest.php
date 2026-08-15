@@ -64,22 +64,30 @@ it('al ejecutar desvincula la bitácora previa del titular y la propia entrada d
     // Camino de producción end-to-end: si alguien borra la llamada a
     // desvincular() dentro de AplicarRetencion::aplicarA(), este test es el
     // que lo detecta — los unitarios de Bitacora nunca pasan por acá.
+    $this->travelTo(now()->subMonths(2));
     app(RegistroDeEvidencia::class)->registrar('solicitud.registrada', ['x' => 1], $this->vencida);
     app(RegistroDeEvidencia::class)->registrar('solicitud.acogida', ['y' => 2], $this->vencida);
+    $this->travelBack();
 
     app(AplicarRetencion::class)->ejecutar(simulacion: false);
 
-    // Barridas por el UPDATE de desvincular(): las dos previas más la propia
-    // 'retencion.aplicada', todas agrupadas bajo la misma referencia aleatoria.
+    // Las dos previas se agrupan bajo la misma referencia aleatoria.
     $huerfanas = EntradaBitacora::whereNotNull('titular_ref')->get();
 
-    expect($huerfanas)->toHaveCount(3)
+    // La propia 'retencion.aplicada' también queda desvinculada, pero FUERA del
+    // grupo: se escribió dentro de la transacción de anonimización y lleva su
+    // hora exacta, la misma que quedó congelada en el updated_at de la persona.
+    // Con la referencia puesta, esa hora sería la llave para leer todo el caso.
+    $deLaAnonimizacion = EntradaBitacora::where('evento', 'retencion.aplicada')->sole();
+
+    expect($huerfanas)->toHaveCount(2)
         ->and($huerfanas->pluck('titular_ref')->unique())->toHaveCount(1)
         ->and($huerfanas->pluck('evento')->sort()->values()->all())->toBe([
-            'retencion.aplicada',
             'solicitud.acogida',
             'solicitud.registrada',
         ])
+        ->and($deLaAnonimizacion->titular_id)->toBeNull()
+        ->and($deLaAnonimizacion->titular_ref)->toBeNull()
         ->and(EntradaBitacora::whereNotNull('titular_id')->count())->toBe(0);
 });
 
