@@ -21,12 +21,29 @@ class Brecha extends Model
         'titulares_estimados' => 'integer',
         'notificada_agencia_en' => 'datetime',
         'notificada_titulares_en' => 'datetime',
+        'vence_notificacion_agencia_en' => 'datetime',
     ];
 
     /** @param Builder<Brecha> $query */
     public function scopeSinNotificar(Builder $query): void
     {
         $query->whereNull('notificada_agencia_en');
+    }
+
+    /** @param Builder<Brecha> $query */
+    public function scopePorVencer(Builder $query, int $dias = 1): void
+    {
+        $query->sinNotificar()
+            ->whereNotNull('vence_notificacion_agencia_en')
+            ->whereBetween('vence_notificacion_agencia_en', [now(), now()->addDays($dias)]);
+    }
+
+    /** @param Builder<Brecha> $query */
+    public function scopeVencidas(Builder $query): void
+    {
+        $query->sinNotificar()
+            ->whereNotNull('vence_notificacion_agencia_en')
+            ->where('vence_notificacion_agencia_en', '<', now());
     }
 
     // Esta es la cola de triage: brechas registradas antes de que alguien

@@ -2,6 +2,7 @@
 
 namespace Muni\Shared\Privacidad;
 
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Modelos\Brecha;
@@ -25,6 +26,11 @@ class Brechas
             $brecha = Brecha::create([
                 'sistema' => (string) config('privacidad.sistema'),
                 'detectada_en' => $datos['detectada_en'] ?? now(),
+                // El reloj corre desde la detección, no desde el registro: una
+                // brecha detectada la semana pasada y anotada hoy ya puede
+                // estar vencida, y el sistema tiene que decirlo.
+                'vence_notificacion_agencia_en' => Carbon::parse($datos['detectada_en'] ?? now())
+                    ->addDays((int) config('privacidad.plazo_notificacion_brecha_dias')),
                 'descripcion' => $descripcion,
                 'naturaleza' => $datos['naturaleza'] ?? null,
                 'categorias_afectadas' => $datos['categorias_afectadas'] ?? null,
