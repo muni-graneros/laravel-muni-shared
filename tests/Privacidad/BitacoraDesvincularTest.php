@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Str;
 use Muni\Shared\Privacidad\Bitacora;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Modelos\EntradaBitacora;
@@ -53,6 +54,20 @@ it('la referencia es aleatoria: dos titulares distintos nunca comparten una', fu
 
     expect(EntradaBitacora::whereNotNull('titular_ref')->pluck('titular_ref')->unique())
         ->toHaveCount(2);
+});
+
+it('la referencia no codifica el instante de la anonimización', function () {
+    // Un ULID —lo que este campo usaba antes— lleva la marca de tiempo en sus
+    // 10 primeros caracteres, y ese instante se junta con el updated_at que
+    // anonimizar() estampa en la persona. La referencia tiene que ser opaca,
+    // no ordenable.
+    app(Bitacora::class)->desvincular($this->titular);
+
+    $ref = EntradaBitacora::whereNotNull('titular_ref')->first()->titular_ref;
+
+    expect(Str::isUlid($ref))->toBeFalse()
+        ->and(Str::isUuid($ref))->toBeFalse()
+        ->and(strlen($ref))->toBe(32);
 });
 
 it('deja constancia de la propia desvinculación', function () {

@@ -22,7 +22,16 @@ class Bitacora
     public function desvincular(Model $titular): int
     {
         return DB::transaction(function () use ($titular): int {
-            $ref = (string) Str::ulid();
+            // Aleatorio puro, NO un ULID. Un ULID parece la elección natural
+            // —ordenable, corto, sin colisiones— y fue la que se hizo primero,
+            // pero sus 10 primeros caracteres SON la marca de tiempo en
+            // milisegundos: la referencia publicaba el instante exacto de la
+            // anonimización, que se junta con `personas.updated_at` del sistema
+            // consumidor (lo estampa anonimizar(), en esta misma transacción) y
+            // vuelve a la persona. Si alguien lo "mejora" a ULID/UUIDv7 por
+            // ordenabilidad, reabre esa correlación: acá no se necesita orden,
+            // se necesita opacidad.
+            $ref = Str::random(32);
 
             // Por query builder a propósito: el modelo es append-only y rechaza
             // `updating`. Cortar el vínculo es la única mutación admitida, y queda
