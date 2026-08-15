@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Str;
 use Muni\Shared\Privacidad\AplicarRetencion;
 use Muni\Shared\Privacidad\BaseLicitud;
 use Muni\Shared\Privacidad\Bitacora;
@@ -46,6 +47,27 @@ function tablasDelModuloConTitular(): array
         ->all();
 }
 
+/**
+ * Columnas de texto libre (varchar/text/json) de cada tabla barrida, leídas del
+ * esquema: son las que pueden traer un identificador escrito adentro, que es lo
+ * que cortar punteros no resuelve.
+ *
+ * @return array<string, list<string>>
+ */
+function columnasDeTextoLibre(): array
+{
+    $tiposDeTexto = ['varchar', 'char', 'text', 'tinytext', 'mediumtext', 'longtext', 'json', 'jsonb'];
+
+    return collect(tablasDelModuloConTitular())
+        ->mapWithKeys(fn (string $tabla) => [$tabla => collect(Schema::getColumns($tabla))
+            ->filter(fn (array $columna) => in_array(strtolower((string) $columna['type_name']), $tiposDeTexto, true))
+            ->pluck('name')
+            ->sort()
+            ->values()
+            ->all(), ])
+        ->all();
+}
+
 beforeEach(function () {
     config(['privacidad.sistema' => 'discapacidad']);
 
@@ -85,28 +107,51 @@ beforeEach(function () {
 
     // Historia completa de las dos personas: solicitud, exportación,
     // rectificación, consentimiento, información entregada y bitácora suelta.
-    $historia = function (PersonaDePrueba $persona) {
-        $verificacion = new ResultadoVerificacion(true, 'cedula_presencial', ['run' => $persona->documento]);
+    //
+    // Los textos van sembrados con identificadores reales a propósito —el RUT
+    // dentro del relato, el nombre en la resolución, el RUT en el nombre del
+    // archivo de respuesta, la IP del formulario—, porque es lo que hacen los
+    // sistemas de verdad y es exactamente lo que tiene que no sobrevivir.
+    $historia = function (PersonaDePrueba $persona, string $ip, string $direccion) {
+        $rut = (string) $persona->documento;
+        $verificacion = new ResultadoVerificacion(true, 'cedula_presencial', ['run' => $rut]);
 
         $acceso = app(Solicitudes::class)->registrar(
-            $persona, TipoDeSolicitud::Acceso, 'Quiero saber qué tienen de mí', $verificacion,
+            $persona,
+            TipoDeSolicitud::Acceso,
+            "Mi RUT es {$rut} y vivo en {$direccion}: quiero saber qué tienen de mí",
+            $verificacion,
         );
         app(ExportacionDeDatos::class)->paraSolicitud($acceso);
+        app(Solicitudes::class)->acoger(
+            $acceso,
+            "Se entregó el expediente completo a {$persona->nombre} en el mesón",
+            'respuestas/'.str_replace(['.', '-'], '', $rut).'.pdf',
+        );
 
         $rectificacion = app(Solicitudes::class)->registrar(
-            $persona, TipoDeSolicitud::Rectificacion, 'Mi apellido está mal escrito', $verificacion,
+            $persona, TipoDeSolicitud::Rectificacion, "Mi apellido está mal escrito, soy {$persona->nombre}", $verificacion,
         );
         app(Rectificaciones::class)->aplicar(
-            $rectificacion, ['nombre' => $persona->nombre.' Soto'], 'Se corrigió con la cédula a la vista',
+            $rectificacion, ['nombre' => $persona->nombre.' Soto'], "Se corrigió con la cédula de {$persona->nombre} a la vista",
         );
 
-        app(Consentimientos::class)->otorgar($persona, $this->accesoria, MedioDeConsentimiento::FirmaPapel);
-        app(Informaciones::class)->registrar($persona, 'aviso_recoleccion', MedioDeConsentimiento::FirmaPapel);
+        app(Consentimientos::class)->otorgar($persona, $this->accesoria, MedioDeConsentimiento::FirmaPapel, [
+            'evidencia_path' => 'consentimientos/'.str_replace(['.', '-'], '', $rut).'.pdf',
+            'version_texto' => 'v1',
+            'ip' => $ip,
+        ]);
+        app(Informaciones::class)->registrar($persona, 'aviso_recoleccion', MedioDeConsentimiento::FirmaPapel, [
+            'ip' => $ip,
+        ]);
         app(RegistroDeEvidencia::class)->registrar('ficha.consultada', ['pantalla' => 'detalle'], $persona);
     };
 
-    $historia($this->titular);
-    $historia($this->vigente);
+    // Direcciones distintas a propósito: si las dos personas compartieran el
+    // texto, la búsqueda de identificadores del test no podría distinguir un
+    // dato que sobrevivió de uno que es de la persona vigente.
+    $historia($this->titular, $this->ip = '192.168.10.44', $this->direccion = 'Av. Freire 123');
+    $historia($this->vigente, '192.168.10.99', 'Pasaje Los Aromos 987');
 
     $vencido = $this->titular->getKey();
 
@@ -211,6 +256,133 @@ it('todas las filas del titular quedan bajo una única referencia opaca', functi
         ->and(strlen((string) $refs->first()))->toBe(32);
 });
 
+it('ninguna columna de una tabla barrida conserva un identificador del titular', function () {
+    // Esta es la aserción que importa. Las de arriba comprueban que se cortaron
+    // los punteros; esta comprueba la propiedad de verdad —que no sobrevive
+    // nada que identifique a la persona—, que es la que el fix anterior no
+    // tenía: un RUT en claro dentro de `verificacion_identidad` identifica
+    // igual que un titular_id, y no hace falta ni un join para leerlo.
+    $identificadores = collect([
+        (string) $this->titular->documento,                                  // el RUT como lo escribió el mesón
+        str_replace(['.', '-'], '', (string) $this->titular->documento),     // y como quedó en el nombre del archivo
+        'Rocío Paredes',
+        $this->direccion,
+        // Un sha256 de IP no es anonimato: son 2^32 direcciones, se recorren
+        // enteras en un rato con un diccionario precalculado.
+        hash('sha256', $this->ip),
+        sha1($this->titular->getMorphClass().'|'.$this->titular->getKey().'|'.$this->accesoria->getKey()),
+    ])
+        // Cada uno también en su forma escapada: la bitácora guarda `datos`
+        // como JSON, donde «Rocío» viaja como «Rocío». Buscar solo la forma
+        // legible dejaría pasar justo lo que se quiere detectar.
+        ->flatMap(fn (string $id) => [$id, trim((string) json_encode($id), '"')])
+        ->unique()
+        ->all();
+
+    $buscar = function () use ($identificadores): array {
+        $hallazgos = [];
+
+        foreach (tablasDelModuloConTitular() as $tabla) {
+            foreach (DB::table($tabla)->get() as $fila) {
+                foreach ((array) $fila as $columna => $valor) {
+                    if (! is_string($valor)) {
+                        continue;
+                    }
+
+                    foreach ($identificadores as $identificador) {
+                        if (str_contains($valor, $identificador)) {
+                            $hallazgos[] = "{$tabla}.{$columna}";
+                        }
+                    }
+                }
+            }
+        }
+
+        return array_values(array_unique($hallazgos));
+    };
+
+    // El test se valida a sí mismo: si la búsqueda no encontrara nada ANTES de
+    // anonimizar, tampoco probaría nada después.
+    expect($buscar())->not->toBe([]);
+
+    app(AplicarRetencion::class)->ejecutar(simulacion: false);
+
+    expect($buscar())->toBe([]);
+});
+
+it('toda columna de texto libre de una tabla barrida está clasificada', function () {
+    // Hermana de la guardia de tablas, un nivel más abajo: si mañana alguien
+    // agrega `observaciones` a privacidad_solicitudes y no decide si se purga o
+    // se conserva, acá aparece. La aserción de identificadores de arriba no
+    // alcanza sola, porque una columna nueva que este test no siembra pasaría
+    // en vacío.
+    //
+    // Se conservan porque ninguna guarda un valor del titular: son el sistema,
+    // el nombre del evento, la clase morph, la referencia opaca y etiquetas
+    // categóricas (tipo, estado, medio, quién otorgó, versión del texto) — los
+    // hechos auditables que tienen que sobrevivir a la anonimización.
+    // `datos` es la excepción razonada: es la evidencia misma y su invariante
+    // es nombres de campo, nunca valores.
+    $conservadas = [
+        'privacidad_bitacora' => ['datos', 'evento', 'sistema', 'titular_ref', 'titular_type'],
+        'privacidad_solicitudes' => ['estado', 'sistema', 'solicitante', 'tipo', 'titular_ref', 'titular_type'],
+        'privacidad_consentimientos' => ['medio', 'otorgado_por', 'titular_ref', 'titular_type', 'version_texto'],
+        'privacidad_informaciones' => ['medio', 'sistema', 'titular_ref', 'titular_type'],
+    ];
+
+    /** @var array<string, array<string, mixed>> $tablas */
+    $tablas = (new ReflectionClass(Bitacora::class))->getConstant('TABLAS');
+
+    $purgadas = collect($tablas)->map(
+        // La clave puede venir con ruta JSON («verificacion_identidad->evidencia»);
+        // lo clasificado es la columna.
+        fn (array $columnas) => collect(array_keys($columnas))->map(fn (string $c) => Str::before($c, '->'))->all(),
+    );
+
+    $sinClasificar = [];
+
+    foreach (columnasDeTextoLibre() as $tabla => $columnas) {
+        foreach ($columnas as $columna) {
+            if (in_array($columna, $conservadas[$tabla] ?? [], true)) {
+                continue;
+            }
+
+            if (in_array($columna, $purgadas->get($tabla, []), true)) {
+                continue;
+            }
+
+            $sinClasificar[] = "{$tabla}.{$columna}";
+        }
+    }
+
+    expect($sinClasificar)->toBe([]);
+});
+
+it('el hecho auditable sobrevive a la purga', function () {
+    // Suprimir de más también es un defecto: sin tipo, estado y fechas, la
+    // bitácora deja de servir para lo que existe —acreditar ante la Agencia que
+    // la solicitud se recibió y se resolvió dentro del plazo—.
+    app(AplicarRetencion::class)->ejecutar(simulacion: false);
+
+    $rectificacion = DB::table('privacidad_solicitudes')
+        ->whereNull('titular_id')->where('tipo', TipoDeSolicitud::Rectificacion->value)->sole();
+
+    $verificacion = json_decode((string) $rectificacion->verificacion_identidad, true);
+
+    expect($rectificacion->estado)->toBe('acogida')
+        ->and($rectificacion->recibida_en)->not->toBeNull()
+        ->and($rectificacion->vence_en)->not->toBeNull()
+        ->and($rectificacion->resuelta_en)->not->toBeNull()
+        ->and($rectificacion->titular_ref)->not->toBeNull()
+        // El texto libre se fue, pero deja marca de que hubo algo.
+        ->and($rectificacion->detalle)->toBe(Bitacora::SUPRIMIDO)
+        ->and($rectificacion->fundamento_resolucion)->toBeNull()
+        // Cómo se verificó la identidad es hecho auditable; el RUN que iba
+        // adentro, no.
+        ->and($verificacion['metodo'])->toBe('cedula_presencial')
+        ->and($verificacion['evidencia'])->toBe([]);
+});
+
 it('la historia de la persona vigente no se toca', function () {
     app(AplicarRetencion::class)->ejecutar(simulacion: false);
 
@@ -220,9 +392,15 @@ it('la historia de la persona vigente no se toca', function () {
             ->whereNull('titular_ref')
             ->count(), ]);
 
+    $suya = DB::table('privacidad_solicitudes')->where('titular_id', $this->vigente->getKey())->first();
+
     expect($intactas->get('privacidad_solicitudes'))->toBe(2)
         ->and($intactas->get('privacidad_consentimientos'))->toBe(1)
         ->and($intactas->get('privacidad_informaciones'))->toBe(1)
         ->and($intactas->get('privacidad_bitacora'))->toBeGreaterThan(5)
-        ->and($this->vigente->refresh()->documento)->toBe('22.222.222-2');
+        ->and($this->vigente->refresh()->documento)->toBe('22.222.222-2')
+        // Y su texto libre sigue completo: la purga es del titular anonimizado,
+        // no del que sigue vigente.
+        ->and($suya->detalle)->toContain('22.222.222-2')
+        ->and($suya->verificacion_identidad)->toContain('22.222.222-2');
 });
