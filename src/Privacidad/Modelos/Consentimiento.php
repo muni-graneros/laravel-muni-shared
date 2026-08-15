@@ -7,9 +7,11 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Muni\Shared\Privacidad\MedioDeConsentimiento;
+use Muni\Shared\Privacidad\Solicitante;
 
 /**
  * @property MedioDeConsentimiento $medio
+ * @property Solicitante $otorgado_por
  */
 class Consentimiento extends Model
 {
@@ -19,6 +21,7 @@ class Consentimiento extends Model
 
     protected $casts = [
         'medio' => MedioDeConsentimiento::class,
+        'otorgado_por' => Solicitante::class,
         'otorgado_en' => 'datetime',
         'revocado_en' => 'datetime',
     ];

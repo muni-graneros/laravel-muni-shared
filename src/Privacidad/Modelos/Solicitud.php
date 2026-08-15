@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Carbon;
 use Muni\Shared\Privacidad\EstadoDeSolicitud;
+use Muni\Shared\Privacidad\Solicitante;
 use Muni\Shared\Privacidad\TipoDeSolicitud;
 
 /**
@@ -14,6 +15,7 @@ use Muni\Shared\Privacidad\TipoDeSolicitud;
  * @property EstadoDeSolicitud $estado
  * @property Carbon $vence_en
  * @property array<string, mixed> $verificacion_identidad
+ * @property Solicitante $solicitante
  */
 class Solicitud extends Model
 {
@@ -28,6 +30,7 @@ class Solicitud extends Model
         'vence_en' => 'datetime',
         'resuelta_en' => 'datetime',
         'verificacion_identidad' => 'array',
+        'solicitante' => Solicitante::class,
     ];
 
     /** @return MorphTo<Model, Solicitud> */

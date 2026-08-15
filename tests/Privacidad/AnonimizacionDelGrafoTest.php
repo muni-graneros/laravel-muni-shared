@@ -417,7 +417,9 @@ it('toda columna clasificable de una tabla barrida está clasificada', function 
     //
     // Se conservan porque ninguna guarda un valor del titular: el sistema, el
     // nombre del evento, la clase morph, la referencia opaca, las etiquetas
-    // categóricas (tipo, estado, medio, quién otorgó, versión del texto) y las
+    // categóricas —tipo, estado, medio, quién otorgó, versión del texto; las dos
+    // de «quién actúa» respaldadas por el enum Solicitante, que es lo que impide
+    // que esta lista termine bendiciendo un nombre de persona— y las
     // llaves a catálogos del propio módulo (una finalidad o un texto informativo
     // no son una persona). `datos` es la excepción razonada: es la evidencia
     // misma y su invariante es nombres de campo, nunca valores.

@@ -17,7 +17,7 @@ class Solicitudes
         TipoDeSolicitud $tipo,
         string $detalle,
         ResultadoVerificacion $verificacion,
-        string $solicitante = 'titular',
+        Solicitante $solicitante = Solicitante::Titular,
     ): Solicitud {
         // Entregar datos personales a quien no acreditó ser el titular es la
         // fuga más fácil de cometer y la más difícil de explicar después.

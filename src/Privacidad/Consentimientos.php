@@ -52,7 +52,11 @@ class Consentimientos
                 'medio' => $medio,
                 'evidencia_path' => $opciones['evidencia_path'] ?? null,
                 'version_texto' => $opciones['version_texto'] ?? null,
-                'otorgado_por' => $opciones['otorgado_por'] ?? 'titular',
+                // Enum y no texto: es una de las dos columnas que el barrido de
+                // anonimización conserva por ser categórica, y esa promesa solo
+                // se sostiene si la columna no puede recibir el nombre del
+                // representante (ver Solicitante).
+                'otorgado_por' => $opciones['otorgado_por'] ?? Solicitante::Titular,
                 'user_id' => Auth::id(),
                 'ip_hash' => isset($opciones['ip']) ? hash('sha256', (string) $opciones['ip']) : null,
             ]);
