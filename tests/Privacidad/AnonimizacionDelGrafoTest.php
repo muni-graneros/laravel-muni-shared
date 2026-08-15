@@ -21,6 +21,7 @@ use Muni\Shared\Privacidad\Solicitudes;
 use Muni\Shared\Privacidad\Textos;
 use Muni\Shared\Privacidad\TipoDeSolicitud;
 use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
+use Muni\Shared\Tests\Privacidad\Fixtures\UsuarioDePrueba;
 
 /**
  * Anonimizar es una propiedad del grafo, no de una fila: mientras CUALQUIER
@@ -88,8 +89,37 @@ function columnasDeFecha(): array
         ->all();
 }
 
+/**
+ * Columnas de identificador (enteros y uuid) de cada tabla barrida.
+ *
+ * Van con las de texto en la misma guardia porque el defecto que cierran es el
+ * mismo, y este es peor: un `user_id` no lo ve ninguna búsqueda de cadenas, así
+ * que puede quedar apuntando a la persona durante ciclos sin que nada chille.
+ *
+ * @return array<string, list<string>>
+ */
+function columnasDeIdentificador(): array
+{
+    $tiposDeId = ['integer', 'bigint', 'smallint', 'int', 'int8', 'int4', 'uuid', 'guid'];
+
+    return collect(tablasDelModuloConTitular())
+        ->mapWithKeys(fn (string $tabla) => [$tabla => collect(Schema::getColumns($tabla))
+            ->filter(fn (array $columna) => in_array(strtolower((string) $columna['type_name']), $tiposDeId, true))
+            ->pluck('name')
+            ->sort()
+            ->values()
+            ->all(), ])
+        ->all();
+}
+
 beforeEach(function () {
     config(['privacidad.sistema' => 'discapacidad']);
+
+    // El caso que hace peligrosos a los `user_*`: un adoptante con portal
+    // ciudadano, donde quien está autenticado es el propio titular. El módulo
+    // guarda Auth::id() sin preguntar, así que ese id ES la persona.
+    $this->usuario = new UsuarioDePrueba(['id' => 77]);
+    $this->actingAs($this->usuario);
 
     $this->titular = PersonaDePrueba::create([
         'nombre' => 'Rocío Paredes',
@@ -374,24 +404,28 @@ it('ninguna fila con referencia lleva una fecha del instante de la anonimizació
         ->and(array_values(array_unique($conFechaDelInstante)))->toBe([]);
 });
 
-it('toda columna de texto libre de una tabla barrida está clasificada', function () {
+it('toda columna clasificable de una tabla barrida está clasificada', function () {
     // Hermana de la guardia de tablas, un nivel más abajo: si mañana alguien
     // agrega `observaciones` a privacidad_solicitudes y no decide si se purga o
     // se conserva, acá aparece. La aserción de identificadores de arriba no
     // alcanza sola, porque una columna nueva que este test no siembra pasaría
     // en vacío.
     //
-    // Se conservan porque ninguna guarda un valor del titular: son el sistema,
-    // el nombre del evento, la clase morph, la referencia opaca y etiquetas
-    // categóricas (tipo, estado, medio, quién otorgó, versión del texto) — los
-    // hechos auditables que tienen que sobrevivir a la anonimización.
-    // `datos` es la excepción razonada: es la evidencia misma y su invariante
-    // es nombres de campo, nunca valores.
+    // Cubre texto Y enteros/uuid. Los `user_*` se colaron exactamente por ese
+    // hueco: son enteros, no los ve ninguna búsqueda de cadenas, y sobrevivieron
+    // dos rondas sin que nadie decidiera nada sobre ellos.
+    //
+    // Se conservan porque ninguna guarda un valor del titular: el sistema, el
+    // nombre del evento, la clase morph, la referencia opaca, las etiquetas
+    // categóricas (tipo, estado, medio, quién otorgó, versión del texto) y las
+    // llaves a catálogos del propio módulo (una finalidad o un texto informativo
+    // no son una persona). `datos` es la excepción razonada: es la evidencia
+    // misma y su invariante es nombres de campo, nunca valores.
     $conservadas = [
-        'privacidad_bitacora' => ['datos', 'evento', 'sistema', 'titular_ref', 'titular_type'],
-        'privacidad_solicitudes' => ['estado', 'sistema', 'solicitante', 'tipo', 'titular_ref', 'titular_type'],
-        'privacidad_consentimientos' => ['medio', 'otorgado_por', 'titular_ref', 'titular_type', 'version_texto'],
-        'privacidad_informaciones' => ['medio', 'sistema', 'titular_ref', 'titular_type'],
+        'privacidad_bitacora' => ['datos', 'evento', 'id', 'sistema', 'titular_ref', 'titular_type'],
+        'privacidad_solicitudes' => ['estado', 'id', 'sistema', 'solicitante', 'tipo', 'titular_ref', 'titular_type'],
+        'privacidad_consentimientos' => ['finalidad_id', 'id', 'medio', 'otorgado_por', 'titular_ref', 'titular_type', 'version_texto'],
+        'privacidad_informaciones' => ['id', 'medio', 'sistema', 'texto_id', 'titular_ref', 'titular_type'],
     ];
 
     /** @var array<string, array<string, mixed>> $tablas */
@@ -406,20 +440,46 @@ it('toda columna de texto libre de una tabla barrida está clasificada', functio
     $sinClasificar = [];
 
     foreach (columnasDeTextoLibre() as $tabla => $columnas) {
-        foreach ($columnas as $columna) {
-            if (in_array($columna, $conservadas[$tabla] ?? [], true)) {
-                continue;
-            }
+        // `titular_id` no está en TABLAS porque lo anula el propio barrido, en
+        // las dos ramas de la ventana: es su objetivo, no una columna más.
+        $clasificadas = array_merge($conservadas[$tabla] ?? [], $purgadas->get($tabla, []), ['titular_id']);
 
-            if (in_array($columna, $purgadas->get($tabla, []), true)) {
-                continue;
+        foreach (array_merge($columnas, columnasDeIdentificador()[$tabla] ?? []) as $columna) {
+            if (! in_array($columna, $clasificadas, true)) {
+                $sinClasificar[] = "{$tabla}.{$columna}";
             }
-
-            $sinClasificar[] = "{$tabla}.{$columna}";
         }
     }
 
-    expect($sinClasificar)->toBe([]);
+    expect(array_values(array_unique($sinClasificar)))->toBe([]);
+});
+
+it('los ids de usuario no sobreviven en las filas del titular anonimizado', function () {
+    // En un portal ciudadano ese entero es la cuenta del propio titular, y el
+    // módulo no puede distinguirlo del id de un funcionario: guarda Auth::id()
+    // sin preguntar. Conservarlo dejaría un puntero directo a la persona que
+    // ninguna guardia de texto ve.
+    app(AplicarRetencion::class)->ejecutar(simulacion: false);
+
+    $conUsuario = [];
+
+    foreach (columnasDeIdentificador() as $tabla => $columnas) {
+        foreach (array_filter($columnas, fn (string $c) => str_starts_with($c, 'user_')) as $columna) {
+            $vivos = DB::table($tabla)->whereNull('titular_id')->whereNotNull($columna)->count();
+
+            if ($vivos > 0) {
+                $conUsuario[] = "{$tabla}.{$columna}";
+            }
+        }
+    }
+
+    expect($conUsuario)->toBe([])
+        // Y en las filas de la persona vigente el id sigue: la trazabilidad del
+        // funcionario se pierde solo donde ya no hay a quién trazar.
+        ->and(DB::table('privacidad_solicitudes')
+            ->where('titular_id', $this->vigente->getKey())
+            ->whereNotNull('user_registro_id')
+            ->count())->toBe(2);
 });
 
 it('el hecho auditable sobrevive a la purga', function () {

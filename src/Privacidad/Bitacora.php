@@ -47,6 +47,20 @@ class Bitacora
      * El otro es el texto libre: cortar punteros no anonimiza una fila que trae
      * el RUT escrito adentro, y `verificacion_identidad` guarda justamente eso.
      *
+     * Los ids de usuario (`user_id`, `user_registro_id`, `user_resolucion_id`)
+     * SE SUPRIMEN, y la decisión merece quedar escrita porque la intuición dice
+     * lo contrario. En un panel de funcionarios ese id es el funcionario que
+     * actuó, no la persona, y conservarlo parece rendición de cuentas. Pero este
+     * es un paquete compartido y no puede ver el modelo de autenticación del
+     * sistema que lo adopta: `BitacoraEnBaseDeDatos` guarda `Auth::id()` sin
+     * preguntar, y en un adoptante con portal ciudadano —que es hacia donde va
+     * el ecosistema— `Auth::id()` ES la cuenta del propio titular. Ahí la
+     * columna deja de ser trazabilidad y pasa a ser un puntero directo a la
+     * persona, entero y sin hashear, que ninguna de las guardias de texto
+     * detecta. Equivocarse conservando deja un identificador vivo; equivocarse
+     * suprimiendo cuesta saber qué funcionario tramitó un caso YA anonimizado,
+     * que además el adoptante suele tener en su propio activity_log.
+     *
      * Lo que NO se toca es el hecho auditable: tipo, estado, fechas, medio y la
      * referencia opaca siguen ahí. Después del barrido se tiene que poder
      * seguir diciendo «se pidió una rectificación tal día y se acogió tal
@@ -69,8 +83,10 @@ class Bitacora
         // test de aceptación busca los identificadores sembrados también en
         // esta columna, así que si alguien empieza a volcar valores en la
         // bitácora, se ve.
-        'privacidad_bitacora' => [],
+        'privacidad_bitacora' => ['user_id' => null],
         'privacidad_solicitudes' => [
+            'user_registro_id' => null,
+            'user_resolucion_id' => null,
             // Prosa dictada por el ciudadano: puede traer su RUT, su dirección
             // o el nombre de un familiar. NOT NULL, va con centinela.
             'detalle' => self::SUPRIMIDO,
@@ -90,9 +106,11 @@ class Bitacora
             'vigente_clave' => null,
             'evidencia_path' => null,
             'ip_hash' => null,
+            'user_id' => null,
         ],
         'privacidad_informaciones' => [
             'ip_hash' => null,
+            'user_id' => null,
         ],
     ];
 
@@ -191,9 +209,26 @@ class Bitacora
                 // en disco, acá desaparece el puntero, no el documento. Eso le
                 // toca a purgarDatosSensibles() del sistema adoptante, que corre
                 // antes en AplicarRetencion.
+                $ultima = (int) DB::table('privacidad_bitacora')->max('id');
+
                 $this->evidencia->registrar('bitacora.desvinculada', [
                     'filas' => $afectadas,
                 ]);
+
+                // Y sin usuario. La constancia la escribe `registrar()`, que
+                // guarda Auth::id() sin preguntar; normalmente es null porque la
+                // retención corre por cron, pero un adoptante que ofrezca
+                // «eliminar mi cuenta» en su portal ciudadano la dispararía con
+                // el propio titular autenticado. Quedaría su id de usuario en la
+                // fila del instante exacto de la anonimización: el mismo camino
+                // que cierra la ventana de arriba, entrando por un entero.
+                //
+                // Se acota por id y por evento para no tocar la evidencia de
+                // otra petición que esté escribiendo en el mismo segundo.
+                DB::table('privacidad_bitacora')
+                    ->where('id', '>', $ultima)
+                    ->where('evento', 'bitacora.desvinculada')
+                    ->update(['user_id' => null]);
             }
 
             return $afectadas;
