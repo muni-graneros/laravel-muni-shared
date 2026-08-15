@@ -5,21 +5,37 @@ namespace Muni\Shared\Privacidad\Modelos;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Muni\Shared\Privacidad\BaseLicitud;
+use Muni\Shared\Privacidad\ExcepcionDatoSensible;
 use Muni\Shared\Privacidad\FinalidadInvalida;
 
 /**
  * @property BaseLicitud $base_licitud
+ * @property ExcepcionDatoSensible|null $excepcion_dato_sensible
  * @property array<int, string>|null $categorias_datos
  * @property array<int, string>|null $destinatarios
  */
 class Finalidad extends Model
 {
+    /**
+     * Categorías que la ley trata como sensibles.
+     *
+     * `socioeconomico` está acá porque la ley chilena la incluye explícitamente,
+     * a diferencia del RGPD: copiar un catálogo europeo dejaría fuera justo la
+     * categoría que más aparece en un municipio (fichas sociales, ayudas,
+     * subsidios).
+     */
+    public const CATEGORIAS_SENSIBLES = [
+        'salud', 'biometricos', 'perfil_biologico', 'origen_etnico',
+        'socioeconomico', 'vida_sexual', 'creencias', 'afiliacion',
+    ];
+
     protected $table = 'privacidad_finalidades';
 
     protected $guarded = [];
 
     protected $casts = [
         'base_licitud' => BaseLicitud::class,
+        'excepcion_dato_sensible' => ExcepcionDatoSensible::class,
         'es_accesoria' => 'boolean',
         'activa' => 'boolean',
         'plazo_retencion_meses' => 'integer',
@@ -56,6 +72,16 @@ class Finalidad extends Model
             throw new FinalidadInvalida(
                 "La finalidad «{$this->codigo}» se funda en la ley pero no dice en cuál. "
                 .'Indicar la norma habilitante.',
+            );
+        }
+
+        $sensibles = array_values(array_intersect($this->categorias_datos ?? [], self::CATEGORIAS_SENSIBLES));
+
+        if ($sensibles !== [] && $this->excepcion_dato_sensible === null) {
+            throw new FinalidadInvalida(
+                "La finalidad «{$this->codigo}» trata datos sensibles (".implode(', ', $sensibles).') '
+                .'pero no declara la causal que lo habilita. La base de licitud general no basta: '
+                .'la ley prohíbe tratarlos salvo causales tasadas.',
             );
         }
     }

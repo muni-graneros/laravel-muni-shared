@@ -1,6 +1,7 @@
 <?php
 
 use Muni\Shared\Privacidad\BaseLicitud;
+use Muni\Shared\Privacidad\ExcepcionDatoSensible;
 use Muni\Shared\Privacidad\FinalidadInvalida;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
 
@@ -11,6 +12,9 @@ it('guarda una finalidad fundada en función legal con su norma habilitante', fu
         'nombre' => 'Registro comunal de personas con discapacidad',
         'base_licitud' => BaseLicitud::FuncionLegal,
         'norma_habilitante' => 'Ley 20.422, art. 1',
+        // Declara `salud`, así que necesita además la causal que habilita tocar
+        // una categoría prohibida: la base de licitud general no alcanza.
+        'excepcion_dato_sensible' => ExcepcionDatoSensible::FinesEstatalesHabilitadosPorLey,
         'es_accesoria' => false,
         'categorias_datos' => ['identificacion', 'salud'],
         'destinatarios' => ['maestro_personas'],

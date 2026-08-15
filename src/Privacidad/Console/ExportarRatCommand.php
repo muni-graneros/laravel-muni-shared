@@ -40,6 +40,7 @@ class ExportarRatCommand extends Command
                     'descripcion' => $f->descripcion,
                     'base_licitud' => $f->base_licitud->value,
                     'norma_habilitante' => $f->norma_habilitante,
+                    'excepcion_dato_sensible' => $f->excepcion_dato_sensible?->value,
                     'es_accesoria' => $f->es_accesoria,
                     'activa' => $f->activa,
                     'plazo_retencion_meses' => $f->plazo_retencion_meses,
@@ -60,12 +61,13 @@ class ExportarRatCommand extends Command
         $this->info("RAT del sistema «{$sistema}» — ".config('privacidad.responsable.nombre'));
 
         $this->table(
-            ['Código', 'Finalidad', 'Base de licitud', 'Norma', 'Retención (meses)', 'Estado'],
+            ['Código', 'Finalidad', 'Base de licitud', 'Norma', 'Causal dato sensible', 'Retención (meses)', 'Estado'],
             $finalidades->map(fn (Finalidad $f): array => [
                 $f->codigo,
                 $f->nombre,
                 $f->base_licitud->etiqueta(),
                 $f->norma_habilitante ?? '—',
+                $f->excepcion_dato_sensible?->etiqueta() ?? '—',
                 $f->plazo_retencion_meses ?? 'sin plazo',
                 $f->activa ? 'Vigente' : 'Dada de baja',
             ])->all(),
