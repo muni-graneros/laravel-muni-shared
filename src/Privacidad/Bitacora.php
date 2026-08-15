@@ -3,7 +3,9 @@
 namespace Muni\Shared\Privacidad;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 
@@ -97,9 +99,9 @@ class Bitacora
             // La respuesta escrita al titular, con su misma exposición.
             'fundamento_resolucion' => null,
             // Una ruta de archivo suele llevar el RUT en el propio nombre, y
-            // apunta a un documento con los datos de la persona. Borrar el
-            // archivo es de purgarDatosSensibles() en el sistema adoptante; acá
-            // se corta el puntero.
+            // apunta a un documento con los datos de la persona. El archivo se
+            // borra antes de anular la columna (ver ARCHIVOS): al revés queda
+            // un PDF con datos personales que ya nadie sabe encontrar.
             'respuesta_path' => null,
         ],
         'privacidad_consentimientos' => [
@@ -112,6 +114,23 @@ class Bitacora
             'ip_hash' => null,
             'user_id' => null,
         ],
+    ];
+
+    /**
+     * Columnas que guardan la ruta de un documento, por tabla.
+     *
+     * Anular la ruta sin borrar el archivo es peor que no hacer nada: el
+     * expediente y el consentimiento firmado siguen en disco —siguen siendo
+     * datos personales— y ya nadie sabe de quién eran ni cómo encontrarlos para
+     * suprimirlos. El módulo escribió estas rutas, así que el módulo las limpia;
+     * dejárselo al adoptante «para después» no funciona, porque después de este
+     * UPDATE la información de qué archivo borrar ya no existe en ninguna parte.
+     *
+     * @var array<string, list<string>>
+     */
+    private const ARCHIVOS = [
+        'privacidad_solicitudes' => ['respuesta_path'],
+        'privacidad_consentimientos' => ['evidencia_path'],
     ];
 
     public function __construct(private readonly RegistroDeEvidencia $evidencia) {}
@@ -156,6 +175,8 @@ class Bitacora
             $ventana = now()->startOfSecond();
 
             $afectadas = 0;
+            $suprimidos = 0;
+            $noEncontrados = 0;
 
             // Por query builder a propósito: el modelo de la bitácora es
             // append-only y rechaza `updating`. Cortar el vínculo es la única
@@ -169,6 +190,18 @@ class Bitacora
                 $delTitular = fn () => DB::table($tabla)
                     ->where('titular_type', $titular->getMorphClass())
                     ->where('titular_id', $titular->getKey());
+
+                // Antes de anular las rutas, borrar los archivos: después del
+                // UPDATE ya no se sabe cuáles eran. Va dentro de la transacción
+                // por el mismo criterio que purgarDatosSensibles() en
+                // AplicarRetencion —un rollback no devuelve un archivo
+                // borrado—, y con el mismo orden load-bearing: si algo falla
+                // después, el documento ya no está aunque la fila vuelva atrás.
+                // Es la dirección correcta para equivocarse.
+                $archivos = $this->suprimirArchivos($tabla, $delTitular());
+
+                $suprimidos += $archivos['suprimidos'];
+                $noEncontrados += $archivos['no_encontrados'];
 
                 // La historia normal: hechos de negocio con fechas de negocio.
                 // Estas sí se agrupan bajo el ref, que es lo que permite seguir
@@ -201,18 +234,27 @@ class Bitacora
                 // pertenecían no lo dice nadie, y ese es el punto.
                 //
                 // El alcance exacto, para que nadie lea de más: se cortan los
-                // punteros al titular, se suprimen las columnas de texto libre
-                // y los hashes derivados que la constante TABLAS enumera, y se
-                // conservan los hechos auditables (tipo, estado, fechas, medio).
-                // Lo que este método NO puede hacer es borrar archivos: si
-                // `respuesta_path` o `evidencia_path` apuntaban a un documento
-                // en disco, acá desaparece el puntero, no el documento. Eso le
-                // toca a purgarDatosSensibles() del sistema adoptante, que corre
-                // antes en AplicarRetencion.
+                // punteros al titular, se suprimen las columnas de texto libre,
+                // los hashes derivados y los ids de usuario que la constante
+                // TABLAS enumera, se borran del disco los documentos que
+                // ARCHIVOS enumera, y se conservan los hechos auditables (tipo,
+                // estado, fechas, medio). Lo que queda fuera del alcance —y está
+                // documentado como pendiente— es el texto libre de las filas de
+                // titulares que NO se anonimizaron, que nadie suprime nunca, y
+                // cualquier copia de esos documentos fuera del disco
+                // configurado.
                 $ultima = (int) DB::table('privacidad_bitacora')->max('id');
 
+                // Los conteos de archivos son hecho auditable y además delatan
+                // una mala configuración: si `archivos_no_encontrados` sube
+                // mientras `archivos_suprimidos` queda en cero, el disco
+                // configurado en `privacidad.disco_evidencia` no es donde el
+                // sistema guarda los documentos, y se está anonimizando dejando
+                // expedientes vivos en otro lado.
                 $this->evidencia->registrar('bitacora.desvinculada', [
                     'filas' => $afectadas,
+                    'archivos_suprimidos' => $suprimidos,
+                    'archivos_no_encontrados' => $noEncontrados,
                 ]);
 
                 // Y sin usuario. La constancia la escribe `registrar()`, que
@@ -233,5 +275,39 @@ class Bitacora
 
             return $afectadas;
         });
+    }
+
+    /**
+     * Borra del disco los documentos referenciados por las filas que se van a
+     * desvincular.
+     *
+     * @param  Builder  $filas  consulta ya acotada al titular
+     * @return array{suprimidos: int, no_encontrados: int}
+     */
+    private function suprimirArchivos(string $tabla, Builder $filas): array
+    {
+        $suprimidos = 0;
+        $noEncontrados = 0;
+
+        $disco = Storage::disk((string) config('privacidad.disco_evidencia'));
+
+        foreach (self::ARCHIVOS[$tabla] ?? [] as $columna) {
+            foreach ($filas->clone()->whereNotNull($columna)->pluck($columna) as $ruta) {
+                // Un archivo que ya no está no es un error: pudo borrarlo la
+                // purga de sensibles del sistema adoptante, que corre antes. Se
+                // cuenta, eso sí, porque el mismo síntoma aparece cuando el
+                // disco configurado no es el correcto.
+                if (! $disco->exists((string) $ruta)) {
+                    $noEncontrados++;
+
+                    continue;
+                }
+
+                $disco->delete((string) $ruta);
+                $suprimidos++;
+            }
+        }
+
+        return ['suprimidos' => $suprimidos, 'no_encontrados' => $noEncontrados];
     }
 }

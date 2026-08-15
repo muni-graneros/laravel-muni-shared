@@ -18,6 +18,21 @@ return [
     // igual que el plazo de respuesta a las solicitudes.
     'plazo_notificacion_brecha_dias' => (int) env('PRIVACIDAD_PLAZO_NOTIFICACION_BRECHA_DIAS', 3),
 
+    // Disco donde viven los documentos que el módulo referencia:
+    // `privacidad_solicitudes.respuesta_path` (la respuesta escrita al titular)
+    // y `privacidad_consentimientos.evidencia_path` (el consentimiento firmado).
+    //
+    // Existe porque al anonimizar hay que BORRAR esos archivos, no solo olvidar
+    // dónde estaban: anular la ruta y dejar el PDF en disco convierte un dato
+    // personal localizable en uno perdido, que sigue siendo dato personal y ya
+    // no hay forma de encontrar para suprimirlo. Y el borrado no lo puede hacer
+    // el adoptante «después», porque después de anular la columna nadie sabe
+    // qué archivo era.
+    //
+    // Default 'local' —el disco privado de Laravel— y no 'public': el
+    // consentimiento firmado de un vecino no se sirve por URL.
+    'disco_evidencia' => env('PRIVACIDAD_DISCO_EVIDENCIA', 'local'),
+
     // Datos del responsable del tratamiento, que van en el RAT y en las
     // respuestas al titular. Por municipio, nunca hardcodeados.
     'responsable' => [

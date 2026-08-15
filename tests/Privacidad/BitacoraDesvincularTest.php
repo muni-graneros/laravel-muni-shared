@@ -1,9 +1,15 @@
 <?php
 
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Muni\Shared\Privacidad\BaseLicitud;
 use Muni\Shared\Privacidad\Bitacora;
+use Muni\Shared\Privacidad\Consentimientos;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
+use Muni\Shared\Privacidad\MedioDeConsentimiento;
+use Muni\Shared\Privacidad\Modelos\Consentimiento;
 use Muni\Shared\Privacidad\Modelos\EntradaBitacora;
+use Muni\Shared\Privacidad\Modelos\Finalidad;
 use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
 
 beforeEach(function () {
@@ -103,12 +109,66 @@ it('la constancia de la desvinculación no publica la referencia', function () {
 
     $constancia = EntradaBitacora::where('evento', 'bitacora.desvinculada')->sole();
 
-    expect($constancia->datos)->toBe(['filas' => 2])
-        ->and($constancia->titular_ref)->toBeNull();
+    expect($constancia->datos)->toBe([
+        'filas' => 2,
+        'archivos_suprimidos' => 0,
+        'archivos_no_encontrados' => 0,
+    ])->and($constancia->titular_ref)->toBeNull();
 });
 
 it('deja constancia de la propia desvinculación', function () {
     app(Bitacora::class)->desvincular($this->titular);
 
     expect(EntradaBitacora::where('evento', 'bitacora.desvinculada')->count())->toBe(1);
+});
+
+it('borra del disco los documentos referenciados, no solo la ruta', function () {
+    // Anular la ruta sin borrar el archivo deja el consentimiento firmado en
+    // disco —sigue siendo dato personal— y ya nadie sabe de quién era para
+    // suprimirlo. Es el fallo que este test existe para impedir.
+    Storage::fake('local');
+    Storage::disk('local')->put('consentimientos/11111111-1.pdf', 'firma escaneada');
+
+    $finalidad = Finalidad::create([
+        'sistema' => 'discapacidad', 'codigo' => 'difusion', 'nombre' => 'Difusión',
+        'base_licitud' => BaseLicitud::Consentimiento, 'es_accesoria' => true,
+    ]);
+    app(Consentimientos::class)->otorgar(
+        $this->titular, $finalidad, MedioDeConsentimiento::FirmaPapel,
+        ['evidencia_path' => 'consentimientos/11111111-1.pdf'],
+    );
+
+    app(Bitacora::class)->desvincular($this->titular);
+
+    Storage::disk('local')->assertMissing('consentimientos/11111111-1.pdf');
+
+    $constancia = EntradaBitacora::where('evento', 'bitacora.desvinculada')->sole();
+
+    expect($constancia->datos['archivos_suprimidos'])->toBe(1)
+        ->and($constancia->datos['archivos_no_encontrados'])->toBe(0)
+        ->and(Consentimiento::sole()->evidencia_path)->toBeNull();
+});
+
+it('cuenta como no encontrado el archivo que ya no está, sin fallar', function () {
+    // Un archivo ausente no es error: pudo borrarlo la purga del sistema
+    // adoptante, que corre antes. Pero se cuenta, porque el mismo síntoma
+    // aparece cuando `privacidad.disco_evidencia` apunta al disco equivocado y
+    // se está anonimizando dejando expedientes vivos en otro lado.
+    Storage::fake('local');
+
+    $finalidad = Finalidad::create([
+        'sistema' => 'discapacidad', 'codigo' => 'difusion', 'nombre' => 'Difusión',
+        'base_licitud' => BaseLicitud::Consentimiento, 'es_accesoria' => true,
+    ]);
+    app(Consentimientos::class)->otorgar(
+        $this->titular, $finalidad, MedioDeConsentimiento::FirmaPapel,
+        ['evidencia_path' => 'consentimientos/inexistente.pdf'],
+    );
+
+    app(Bitacora::class)->desvincular($this->titular);
+
+    $constancia = EntradaBitacora::where('evento', 'bitacora.desvinculada')->sole();
+
+    expect($constancia->datos['archivos_no_encontrados'])->toBe(1)
+        ->and($constancia->datos['archivos_suprimidos'])->toBe(0);
 });
