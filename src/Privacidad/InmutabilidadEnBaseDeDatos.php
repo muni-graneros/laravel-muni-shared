@@ -28,10 +28,23 @@ use Illuminate\Database\Connection;
  *    y en MySQL/MariaDB `TRUNCATE TABLE` no dispara triggers, así que ahí el
  *    guardia sería poroso justo contra el borrado masivo. Un guardia que rompe
  *    ocho suites y no ataja el caso grave no vale la pena: el borrado se cierra
- *    con permisos del motor —`REVOKE DELETE` sobre estas dos tablas para el
- *    usuario de la aplicación, que es paso de adopción y está anotado en
- *    docs/superpowers/specs/2026-08-13-ley-21719-pendientes.md— y con el
- *    guardia `deleting` del modelo, que sí cubre el camino ordinario.
+ *    con permisos del motor —que es paso de adopción, y los GRANT exactos, ya
+ *    probados contra MariaDB, están en
+ *    docs/superpowers/specs/2026-08-13-ley-21719-pendientes.md— y con el guardia
+ *    `deleting` del modelo, que sí cubre el camino ordinario.
+ *
+ *    Y hay que leer ese hueco por lo que es, porque acá decía «hueco de borrado»
+ *    y eso se queda corto: **el privilegio de DELETE es también un privilegio de
+ *    alteración**. `REPLACE INTO … VALUES (id_que_ya_existe, …)` —y su
+ *    `INSERT OR REPLACE` en SQLite— es un borrado seguido de una inserción, así
+ *    que ningún trigger BEFORE UPDATE se dispara: la fila conserva su `id` y
+ *    sale con el `evento`, los `datos` y el `ocurrido_en` que uno quiera.
+ *    Comprobado en los dos motores. O sea que quien puede borrar puede reescribir
+ *    la evidencia EN SU LUGAR, sin dejar el hueco visible que dejaría un borrado,
+ *    que es exactamente lo que este trigger se instaló a impedir. La buena
+ *    noticia es que un solo paso cierra las dos cosas: sin el privilegio de
+ *    DELETE, el motor rechaza el `REPLACE INTO` con el mismo 1142 con que rechaza
+ *    el `DELETE` (verificado contra MariaDB 11.8 con los grants del spec).
  * 2. No ataja a quien tenga DDL. Quien puede `DROP TRIGGER` o `DROP TABLE`
  *    puede todo; eso es un problema de grants, no de esquema.
  * 3. Solo hay SQL para sqlite y mysql/mariadb, que son los motores en que este
