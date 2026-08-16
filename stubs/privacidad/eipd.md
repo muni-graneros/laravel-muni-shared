@@ -30,6 +30,19 @@ Vienen con el paquete instalado y migrado. Se dan por presentes una vez que
 `php artisan privacidad:rat` responde con las finalidades del sistema.
 
 - Trazabilidad de resoluciones y supresiones (`privacidad_bitacora`)
+- Régimen reforzado de niños, niñas y adolescentes, **igual en el
+  consentimiento y en los cinco derechos ARCOP**: los ejerce su representante
+  legal, acreditado con un documento cuya ruta queda en la fila
+  (`acreditacion_path`), y una fecha de nacimiento desconocida se rechaza en vez
+  de asumir mayoría de edad. Con dos límites que hay que declarar acá: el módulo
+  comprueba que el documento **esté declarado**, no que exista ni que diga lo que
+  dice ser; y las dos guardas cubren los métodos del paquete, no un `INSERT`
+  directo a las tablas
+- Constancia de qué texto informativo exacto aceptó el titular
+  (`privacidad_consentimientos.texto_id` → `privacidad_textos`, con hash y
+  versión), **siempre que el sistema pase la fila que mostró**: si no la pasa, la
+  columna queda en null y el consentimiento no acredita qué versión se leyó.
+  Revisar en la sección 5.2 que el sistema la esté pasando
 - Retención con purga de sensibles y anonimización
   (`privacidad:aplicar-retencion`), sujeta a que el sistema implemente
   `ResuelveTitularesVencidos`: sin eso el comando no revisa nada y lo advierte
@@ -52,6 +65,12 @@ Vienen con el paquete instalado y migrado. Se dan por presentes una vez que
 No son propiedades del módulo, sino de cada instalación. Marcar solo después de
 comprobarlas en el sistema que esta EIPD describe, y anotar cómo se comprobaron.
 
+- [ ] Los formularios de consentimiento pasan la fila del texto que mostraron
+      (`['texto' => $fila]`), y no queda ningún consentimiento nuevo con
+      `texto_id` en null — se comprueba con una consulta, no de memoria
+- [ ] Los códigos de los textos informativos nombran **finalidades y no grupos de
+      personas**: un código por barrio, programa o cohorte particiona las filas
+      anonimizadas y puede volver a distinguir a la persona en grupos chicos
 - [ ] Cifrado de los campos sensibles en reposo — ¿qué campos, con qué mecanismo?
 - [ ] Segundo factor obligatorio para el personal del panel — verificado en el
       navegador, no en `tinker`
