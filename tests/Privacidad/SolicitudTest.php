@@ -9,7 +9,12 @@ use Muni\Shared\Privacidad\TipoDeSolicitud;
 use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
 
 beforeEach(function () {
-    $this->titular = PersonaDePrueba::create(['nombre' => 'Rocío Paredes', 'documento' => '11.111.111-1']);
+    $this->titular = PersonaDePrueba::create([
+        'nombre' => 'Rocío Paredes',
+        'documento' => '11.111.111-1',
+        // Adulta: el régimen de edad de Solicitudes exige la fecha acreditada.
+        'fecha_nacimiento' => now()->subYears(40)->toDateString(),
+    ]);
     $this->verificacion = new ResultadoVerificacion(true, 'cedula_presencial', ['run' => '11.111.111-1']);
 });
 

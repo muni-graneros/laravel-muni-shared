@@ -40,6 +40,8 @@ it('registra quién ejerció el derecho como categoría, no como texto', functio
         'Vengo por mi hija',
         $this->verificacion,
         Solicitante::RepresentanteLegal,
+        // Desde este ciclo, quien actúa por otro acredita la representación.
+        'acreditaciones/certificado-nacimiento.pdf',
     );
 
     expect(Solicitud::sole()->solicitante)->toBe(Solicitante::RepresentanteLegal);
@@ -92,6 +94,7 @@ it('la categoría sobrevive a la anonimización, el resto no', function () {
         'Vengo por mi hija, mi RUT es 11.111.111-1',
         $this->verificacion,
         Solicitante::Apoderado,
+        'acreditaciones/mandato.pdf',
     );
 
     // La historia tiene que ser anterior: lo escrito en el mismo segundo que la

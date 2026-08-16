@@ -27,6 +27,7 @@ beforeEach(function () {
         'documento' => '11.111.111-1',
         'diagnostico' => 'dato sensible de salud',
         'tratamiento_iniciado_en' => now()->subYears(6),
+        'fecha_nacimiento' => now()->subYears(40)->toDateString(),
     ]);
 
     app()->bind(ResuelveTitularesVencidos::class, fn () => new class implements ResuelveTitularesVencidos
@@ -109,6 +110,7 @@ it('las cantidades del barrido se publican una vez por corrida, no por titular',
         'documento' => '33.333.333-3',
         'diagnostico' => 'dato sensible de salud',
         'tratamiento_iniciado_en' => now()->subYears(7),
+        'fecha_nacimiento' => now()->subYears(35)->toDateString(),
     ]);
 
     $this->travelTo(now()->subMonths(2));

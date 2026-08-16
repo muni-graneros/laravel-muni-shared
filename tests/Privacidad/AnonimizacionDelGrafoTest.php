@@ -188,8 +188,13 @@ beforeEach(function () {
             'respuestas/'.str_replace(['.', '-'], '', $rut).'.pdf',
         );
 
+        // La presenta un apoderado: así la historia sembrada cubre también
+        // `privacidad_solicitudes.acreditacion_path`, que es un documento de un
+        // tercero y tiene que borrarse del disco como el resto.
         $rectificacion = app(Solicitudes::class)->registrar(
             $persona, TipoDeSolicitud::Rectificacion, "Mi apellido está mal escrito, soy {$persona->nombre}", $verificacion,
+            Solicitante::Apoderado,
+            'acreditaciones/mandato-'.str_replace(['.', '-'], '', $rut).'.pdf',
         );
         app(Rectificaciones::class)->aplicar(
             $rectificacion, ['nombre' => $persona->nombre.' Soto'], "Se corrigió con la cédula de {$persona->nombre} a la vista",
@@ -300,6 +305,7 @@ it('la retención borra del disco la respuesta al titular y el consentimiento fi
     Storage::disk('local')->put("respuestas/{$rut}.pdf", 'expediente completo');
     Storage::disk('local')->put("consentimientos/{$rut}.pdf", 'firma escaneada');
     Storage::disk('local')->put("acreditaciones/{$rut}.pdf", 'mandato del apoderado');
+    Storage::disk('local')->put("acreditaciones/mandato-{$rut}.pdf", 'mandato de la rectificación');
     // El de la persona vigente: el barrido no puede llevárselo por delante.
     Storage::disk('local')->put('respuestas/222222222.pdf', 'expediente de la vigente');
 
@@ -308,11 +314,12 @@ it('la retención borra del disco la respuesta al titular y el consentimiento fi
     Storage::disk('local')->assertMissing("respuestas/{$rut}.pdf");
     Storage::disk('local')->assertMissing("consentimientos/{$rut}.pdf");
     Storage::disk('local')->assertMissing("acreditaciones/{$rut}.pdf");
+    Storage::disk('local')->assertMissing("acreditaciones/mandato-{$rut}.pdf");
     Storage::disk('local')->assertExists('respuestas/222222222.pdf');
 
     $corrida = EntradaBitacora::where('evento', 'retencion.constancia')->sole();
 
-    expect($corrida->datos['archivos_suprimidos'])->toBe(3)
+    expect($corrida->datos['archivos_suprimidos'])->toBe(4)
         ->and($corrida->datos['archivos_no_encontrados'])->toBe(0);
 });
 

@@ -108,6 +108,10 @@ class Bitacora
             // borra antes de anular la columna (ver ARCHIVOS): al revés queda
             // un PDF con datos personales que ya nadie sabe encontrar.
             'respuesta_path' => null,
+            // El documento con que un tercero acreditó poder actuar por el
+            // titular: nombra al representante y al titular. Mismo criterio
+            // que en los consentimientos.
+            'acreditacion_path' => null,
         ],
         'privacidad_consentimientos' => [
             'vigente_clave' => null,
@@ -165,7 +169,7 @@ class Bitacora
      * @var array<string, list<string>>
      */
     private const ARCHIVOS = [
-        'privacidad_solicitudes' => ['respuesta_path'],
+        'privacidad_solicitudes' => ['respuesta_path', 'acreditacion_path'],
         'privacidad_consentimientos' => ['evidencia_path', 'acreditacion_path'],
     ];
 
