@@ -160,7 +160,8 @@ beforeEach(function () {
         'es_accesoria' => true,
     ]);
 
-    app(Textos::class)->publicar('aviso_recoleccion', 'Sus datos se tratan para…');
+    $this->texto = app(Textos::class)->publicar('aviso_recoleccion', 'Sus datos se tratan para…');
+    $this->textoConsentimiento = app(Textos::class)->publicar('consentimiento_difusion', 'Autorizo la difusión…');
 
     // Historia completa de las dos personas: solicitud, exportación,
     // rectificación, consentimiento, información entregada y bitácora suelta.
@@ -195,7 +196,7 @@ beforeEach(function () {
 
         app(Consentimientos::class)->otorgar($persona, $this->accesoria, MedioDeConsentimiento::FirmaPapel, [
             'evidencia_path' => 'consentimientos/'.str_replace(['.', '-'], '', $rut).'.pdf',
-            'version_texto' => 'v1',
+            'texto' => $this->textoConsentimiento,
             'ip' => $ip,
         ]);
         app(Informaciones::class)->registrar($persona, 'aviso_recoleccion', MedioDeConsentimiento::FirmaPapel, [
@@ -507,7 +508,10 @@ it('toda columna clasificable de una tabla barrida está clasificada', function 
     //
     // Se conservan porque ninguna guarda un valor del titular: el sistema, el
     // nombre del evento, la clase morph, la referencia opaca, las etiquetas
-    // categóricas —tipo, estado, medio, quién otorgó, versión del texto; las dos
+    // categóricas —tipo, estado, medio, quién otorgó; y `version_texto`, que
+    // el módulo ya no escribe y solo conserva las filas anteriores a
+    // `texto_id`: se sigue clasificando porque la columna sigue existiendo y lo
+    // que guarda es una etiqueta de versión, no un dato del titular; las dos
     // de «quién actúa» respaldadas por el enum Solicitante, que es lo que impide
     // que esta lista termine bendiciendo un nombre de persona— y las
     // llaves a catálogos del propio módulo (una finalidad o un texto informativo

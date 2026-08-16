@@ -9,6 +9,7 @@ use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Contratos\TitularDeDatos;
 use Muni\Shared\Privacidad\Modelos\Consentimiento;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
+use Muni\Shared\Privacidad\Modelos\TextoInformativo;
 
 /**
  * El consentimiento solo aplica a finalidades accesorias: el registro base se
@@ -19,7 +20,6 @@ class Consentimientos
 {
     public function __construct(
         private readonly RegistroDeEvidencia $evidencia,
-        private readonly Textos $textos,
         private readonly Edades $edades,
     ) {}
 
@@ -43,6 +43,10 @@ class Consentimientos
         // omitir la opción sería el camino por el que un menor consiente solo.
         $otorgadoPor = $this->solicitanteDe($opciones);
 
+        // Igual que arriba: se resuelve ANTES de la transacción porque puede
+        // rechazar, y un rechazo no tiene por qué abrir una transacción.
+        $texto = $this->textoDe($opciones);
+
         $this->exigirRegimenDeNna($titular, $finalidad, $otorgadoPor);
 
         // La transacción sigue existiendo por la razón 2, no por la 1: si el registro
@@ -52,7 +56,7 @@ class Consentimientos
         // índice único sobre `vigente_clave` (ver la migración), no el orden de
         // llamadas: dos otorgar() concurrentes que ambos intenten insertar la misma
         // clave chocan en la base de datos, no en la aplicación.
-        return DB::transaction(function () use ($titular, $finalidad, $medio, $opciones, $otorgadoPor) {
+        return DB::transaction(function () use ($titular, $finalidad, $medio, $opciones, $otorgadoPor, $texto) {
             // Si había uno vigente, se cierra primero.
             $this->revocar($titular, $finalidad);
 
@@ -64,15 +68,11 @@ class Consentimientos
                 'otorgado_en' => now(),
                 'medio' => $medio,
                 'evidencia_path' => $opciones['evidencia_path'] ?? null,
-                'version_texto' => $opciones['version_texto'] ?? null,
-                // A la fila exacta, no a un string suelto: `version_texto` no
-                // obligaba a nadie a llenarlo y no probaba nada. Ausente el
-                // código, o sin texto vigente con ese código, queda null: es el
-                // camino de los consentimientos en papel de antes de este texto,
-                // que no tienen con qué acreditar la versión.
-                'texto_id' => isset($opciones['codigo_texto'])
-                    ? $this->textos->vigente((string) $opciones['codigo_texto'])?->getKey()
-                    : null,
+                // La fila que el adoptante MOSTRÓ, no una que se resuelva acá.
+                // Ausente la opción queda null, que es el camino de los
+                // consentimientos en papel anteriores a esta tabla: no tienen
+                // con qué acreditar la versión y el módulo no se la inventa.
+                'texto_id' => $texto?->getKey(),
                 // Enum y no texto: es una de las dos columnas que el barrido de
                 // anonimización conserva por ser categórica, y esa promesa solo
                 // se sostiene si la columna no puede recibir el nombre del
@@ -135,9 +135,104 @@ class Consentimientos
     {
         $valor = $opciones['otorgado_por'] ?? Solicitante::Titular;
 
-        // Un valor que no sea un caso del enum revienta acá con ValueError, que
-        // es lo mismo que hacía el cast al crear la fila, solo que antes.
-        return $valor instanceof Solicitante ? $valor : Solicitante::from((string) $valor);
+        if ($valor instanceof Solicitante) {
+            return $valor;
+        }
+
+        // Un valor que no sea un caso del enum salía como `ValueError` —o como
+        // `ErrorException` si venía un arreglo—, dos fallos fuera del
+        // vocabulario del módulo que ningún adoptante puede atrapar por nombre.
+        // El caso realista es `'tutor'`, que el spec de diseño daba por
+        // existente media docena de veces (ver Solicitante).
+        if (! is_string($valor) && ! is_int($valor)) {
+            throw new OpcionInvalida(
+                'La opción `otorgado_por` tiene que ser un caso de Solicitante o su valor en texto; '
+                .'llegó '.get_debug_type($valor).'.',
+            );
+        }
+
+        return Solicitante::tryFrom((string) $valor) ?? throw new OpcionInvalida(
+            "«{$valor}» no es un valor de Solicitante. Los que hay: "
+            .implode(', ', array_column(Solicitante::cases(), 'value')).'.',
+        );
+    }
+
+    /**
+     * El texto informativo que el adoptante MOSTRÓ, resuelto sin volver a
+     * consultar cuál está vigente.
+     *
+     * Acá vivía el defecto grave de esta clase, y conviene decirlo entero
+     * porque la versión anterior parecía la natural: se aceptaba
+     * `codigo_texto` y se resolvía con `Textos::vigente()` AL ESCRIBIR. Entre
+     * que el formulario se renderiza y que el funcionario lo guarda cabe una
+     * publicación —dos funcionarios trabajando, que es el caso que
+     * `Textos::publicar()` ya contempla—, y entonces el consentimiento quedaba
+     * apuntando a un texto que el titular nunca vio. Eso no es un registro
+     * incompleto: es prueba falsa, y en una fiscalización pesa peor que el
+     * `null` que vino a reemplazar, porque parece cumplimiento.
+     *
+     * Por eso se recibe la fila (o su id) y NO un código. El código no se puede
+     * hacer seguro acá: para saber qué versión se mostró habría que preguntarle
+     * al que la mostró, que es exactamente pasar la fila. Quien renderiza el
+     * formulario ya la tiene —la sacó de `Textos::vigente()` para pintarla—, así
+     * que no es trabajo nuevo para el adoptante, es dejar de tirar el dato.
+     *
+     * Se acepta a propósito un texto CON LA VIGENCIA YA CERRADA: es el caso
+     * central de arriba —se mostró v1, se publicó v2, se guarda apuntando a
+     * v1— y exigir que siga vigente reintroduciría el defecto por otra puerta.
+     *
+     * @param  array<string, mixed>  $opciones
+     *
+     * @throws OpcionInvalida si llega el código o la versión en vez de la fila
+     * @throws TextoNoPublicado si la fila no existe o es de otro sistema
+     */
+    private function textoDe(array $opciones): ?TextoInformativo
+    {
+        if (isset($opciones['codigo_texto'])) {
+            throw new OpcionInvalida(
+                'La opción `codigo_texto` ya no se acepta: resolver el código al escribir podía dejar el '
+                .'consentimiento apuntando a un texto publicado DESPUÉS de que el titular leyera el suyo. '
+                .'Pasar en `texto` la fila de TextoInformativo que se mostró (o su id).',
+            );
+        }
+
+        if (isset($opciones['version_texto'])) {
+            throw new OpcionInvalida(
+                'La opción `version_texto` ya no se acepta: era un string suelto que nada obligaba a llenar '
+                .'y que no acreditaba qué leyó el titular. Pasar en `texto` la fila de TextoInformativo que '
+                .'se mostró (o su id). La columna sigue en la tabla solo por las filas anteriores a ella.',
+            );
+        }
+
+        $valor = $opciones['texto'] ?? null;
+
+        if ($valor === null) {
+            return null;
+        }
+
+        $texto = $valor instanceof TextoInformativo
+            ? $valor
+            : TextoInformativo::query()->find($valor);
+
+        if ($texto === null) {
+            throw new TextoNoPublicado(
+                'La opción `texto` no corresponde a ningún texto informativo publicado: '
+                .'no se puede acreditar que el titular leyó algo que no existe.',
+            );
+        }
+
+        // El RAT es por sistema y `Textos::vigente()` filtra por sistema, así
+        // que una fila de otro sistema solo puede llegar acá por error de
+        // cableado; dejarla pasar acreditaría el consentimiento con el aviso de
+        // otro registro comunal.
+        if ($texto->sistema !== (string) config('privacidad.sistema')) {
+            throw new TextoNoPublicado(
+                "El texto #{$texto->getKey()} pertenece al sistema «{$texto->sistema}» y este es "
+                .'«'.config('privacidad.sistema').'»: no acredita lo que se informó acá.',
+            );
+        }
+
+        return $texto;
     }
 
     /**

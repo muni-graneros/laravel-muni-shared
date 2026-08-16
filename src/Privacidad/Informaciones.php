@@ -7,6 +7,7 @@ use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Modelos\InformacionEntregada;
+use Muni\Shared\Privacidad\Modelos\TextoInformativo;
 
 /**
  * El módulo no muestra nada: cada sistema renderiza el texto en su formulario y
@@ -20,14 +21,34 @@ class Informaciones
         private readonly RegistroDeEvidencia $evidencia,
     ) {}
 
-    /** @param array<string, mixed> $opciones */
+    /**
+     * Sella que se le mostró al titular el texto de ese código.
+     *
+     * `$opciones['texto']` es la fila (o el id) que el sistema REALMENTE
+     * renderizó, y conviene pasarla: sin ella, el texto se resuelve acá, al
+     * escribir, y entre el render del formulario y el guardado cabe una
+     * publicación nueva —el mismo defecto que se corrigió en
+     * `Consentimientos::otorgar()`—, con lo que la constancia diría que se
+     * informó una versión que el titular no vio.
+     *
+     * Sin la opción se conserva el camino por código, que no es equivalente:
+     * es una comodidad para el uso donde mostrar y sellar ocurren en la misma
+     * petición, y ahí la ventana no existe.
+     *
+     * @param  array<string, mixed>  $opciones
+     *
+     * @throws OpcionInvalida si el texto pasado no es el de ese código
+     * @throws TextoNoPublicado si no hay texto vigente con ese código
+     */
     public function registrar(
         Model $titular,
         string $codigo,
         MedioDeConsentimiento $medio,
         array $opciones = [],
     ): InformacionEntregada {
-        $texto = $this->textos->vigente($codigo);
+        $texto = isset($opciones['texto'])
+            ? $this->textoMostrado($opciones['texto'], $codigo)
+            : $this->textos->vigente($codigo);
 
         if ($texto === null) {
             throw new TextoNoPublicado(
@@ -57,6 +78,37 @@ class Informaciones
 
             return $registro;
         });
+    }
+
+    /**
+     * La fila que el adoptante dice haber mostrado, comprobada contra lo que
+     * dice haber informado.
+     *
+     * Se acepta con la vigencia ya cerrada a propósito —es el caso central: se
+     * mostró v1 y entretanto se publicó v2—, pero NO se acepta que el código no
+     * calce: un texto de otro código sellaría «se informó el aviso de
+     * recolección» adjuntando el de cámaras, y esa fila la lee después quien
+     * fiscaliza. El sistema tampoco, por la misma razón.
+     */
+    private function textoMostrado(mixed $valor, string $codigo): TextoInformativo
+    {
+        $texto = $valor instanceof TextoInformativo ? $valor : TextoInformativo::query()->find($valor);
+
+        if ($texto === null) {
+            throw new TextoNoPublicado(
+                'La opción `texto` no corresponde a ningún texto informativo publicado: '
+                .'no se puede acreditar que se informó algo que no existe.',
+            );
+        }
+
+        if ($texto->codigo !== $codigo || $texto->sistema !== (string) config('privacidad.sistema')) {
+            throw new OpcionInvalida(
+                "El texto #{$texto->getKey()} es «{$texto->sistema}/{$texto->codigo}» y se está registrando "
+                ."la entrega de «{$codigo}» en este sistema: uno de los dos está mal cableado.",
+            );
+        }
+
+        return $texto;
     }
 
     public function seInformo(Model $titular, string $codigo): bool
