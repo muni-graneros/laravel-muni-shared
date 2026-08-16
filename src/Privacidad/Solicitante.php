@@ -20,6 +20,16 @@ namespace Muni\Shared\Privacidad;
  * el titular o alguien en su representación?— y tener dos listas paralelas que
  * decir lo mismo termina en que solo una se mantiene.
  *
+ * Tampoco existe un caso «tutor», y esto hay que decirlo porque el spec de
+ * diseño y el plan del ciclo 2-b lo daban por existente media docena de veces
+ * («`otorgado_por = 'tutor'`» para el consentimiento de un NNA): con la columna
+ * casteada a este enum, ese string reventaría con `ValueError` al crear la fila.
+ * Quien consiente por un menor va como `RepresentanteLegal` —el tutor o curador
+ * de un NNA ES su representante legal, y `Apoderado` no sirve porque un menor no
+ * puede otorgar mandato—. Agregar el caso sería tener dos etiquetas para el
+ * mismo rol jurídico en una columna que el barrido conserva justamente por ser
+ * categórica y unívoca.
+ *
  * NO existe un caso «heredero», y la ausencia es deliberada: el módulo todavía
  * no modela el fallecimiento del titular (qué derechos se transmiten, con qué
  * acreditación, por cuánto tiempo). Ofrecer la etiqueta sin esas reglas dejaría

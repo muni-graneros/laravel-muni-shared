@@ -770,6 +770,17 @@ falsear la prueba."
 > `TitularDeDatos`, y en una rama sin mergear. Después de adoptar el módulo en
 > los otros siete sistemas, este mismo cambio cuesta ocho veces más.
 
+> **Vocabulario, corregido el 2026-08-15.** Este plan decía `otorgado_por =
+> 'tutor'` en media docena de lugares y **no existe** ese caso: desde el ciclo 2-b
+> `otorgado_por` es un enum `Solicitante` (`titular`, `representante_legal`,
+> `apoderado`) y la columna está casteada, así que un `'tutor'` en crudo revienta
+> con `ValueError` al crear la fila. La etiqueta correcta para quien consiente
+> por un NNA es **`Solicitante::RepresentanteLegal`**: el tutor o curador de un
+> menor ES su representante legal, y `apoderado` no sirve —un menor no puede
+> otorgar mandato—. No se agrega un caso `tutor` a propósito: serían dos
+> etiquetas para el mismo rol jurídico en una columna que el barrido de
+> anonimización conserva justamente por ser categórica y unívoca.
+
 - [ ] **Step 1: Write the failing test**
 
 Crear `tests/Privacidad/NnaTest.php`:
@@ -784,6 +795,7 @@ use Muni\Shared\Privacidad\EdadNoAcreditada;
 use Muni\Shared\Privacidad\FinalidadInvalida;
 use Muni\Shared\Privacidad\MedioDeConsentimiento;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
+use Muni\Shared\Privacidad\Solicitante;
 use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
 
 beforeEach(function () {
@@ -818,18 +830,19 @@ it('sin fecha de nacimiento devuelve null, que NO es adulto', function () {
     expect(app(Edades::class)->esNNA($sinFecha))->toBeNull();
 });
 
-it('el consentimiento de un NNA exige que lo otorgue el tutor', function () {
+it('el consentimiento de un NNA lo otorga su representante legal, no él mismo', function () {
     $nna = PersonaDePrueba::create([
         'nombre' => 'Menor', 'documento' => '11.111.111-1',
         'fecha_nacimiento' => now()->subYears(10)->toDateString(),
     ]);
 
     expect(fn () => app(Consentimientos::class)->otorgar(
-        $nna, $this->finalidad, MedioDeConsentimiento::FirmaPapel, ['otorgado_por' => 'titular'],
+        $nna, $this->finalidad, MedioDeConsentimiento::FirmaPapel, ['otorgado_por' => Solicitante::Titular],
     ))->toThrow(EdadNoAcreditada::class);
 
     $ok = app(Consentimientos::class)->otorgar(
-        $nna, $this->finalidad, MedioDeConsentimiento::FirmaPapel, ['otorgado_por' => 'tutor'],
+        $nna, $this->finalidad, MedioDeConsentimiento::FirmaPapel,
+        ['otorgado_por' => Solicitante::RepresentanteLegal],
     );
 
     expect($ok->exists)->toBeTrue();
@@ -843,7 +856,7 @@ it('rechaza pedir consentimiento a quien no tiene la edad acreditada', function 
     ))->toThrow(EdadNoAcreditada::class);
 });
 
-it('una finalidad que no admite NNA los rechaza aunque consienta el tutor', function () {
+it('una finalidad que no admite NNA los rechaza aunque consienta el representante legal', function () {
     $this->finalidad->update(['admite_nna' => false]);
     $nna = PersonaDePrueba::create([
         'nombre' => 'Menor', 'documento' => '11.111.111-1',
@@ -851,7 +864,8 @@ it('una finalidad que no admite NNA los rechaza aunque consienta el tutor', func
     ]);
 
     expect(fn () => app(Consentimientos::class)->otorgar(
-        $nna, $this->finalidad, MedioDeConsentimiento::FirmaPapel, ['otorgado_por' => 'tutor'],
+        $nna, $this->finalidad, MedioDeConsentimiento::FirmaPapel,
+        ['otorgado_por' => Solicitante::RepresentanteLegal],
     ))->toThrow(FinalidadInvalida::class);
 });
 
@@ -1004,9 +1018,9 @@ En `src/Privacidad/Consentimientos.php`, inyectar `Edades` y, dentro de `otorgar
                 );
             }
 
-            if ($esNNA && ($opciones['otorgado_por'] ?? 'titular') !== 'tutor') {
+            if ($esNNA && ($opciones['otorgado_por'] ?? Solicitante::Titular) !== Solicitante::RepresentanteLegal) {
                 throw new EdadNoAcreditada(
-                    'El consentimiento de un menor de edad lo otorga su representante, no él mismo.',
+                    'El consentimiento de un menor de edad lo otorga su representante legal, no él mismo.',
                 );
             }
         }

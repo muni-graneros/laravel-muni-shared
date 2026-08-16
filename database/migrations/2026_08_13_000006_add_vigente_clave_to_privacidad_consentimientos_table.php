@@ -38,6 +38,17 @@ return new class extends Migration
             // con null no colisionan—, pero de acá NO se puede inferir
             // "vigente_clave IS NULL ⇒ revocado". Quien necesite el estado, que mire
             // `revocado_en`, que es el único que lo dice.
+            //
+            // Y hay que leerlo también al revés, que es donde muerde:
+            // `Consentimiento::scopeVigentes()` filtra por `revocado_en IS NULL` y
+            // nada más, así que los consentimientos de titulares anonimizados
+            // SIGUEN CONTANDO COMO VIGENTES en ese scope. Es correcto —a esa persona
+            // nadie le revocó nada— y es lo que se quiere para las estadísticas
+            // («cuántos consentimientos vigentes hubo para esta finalidad»), pero
+            // cualquier consulta que use el scope para decidir si se puede TRATAR a
+            // alguien tiene que filtrar además por `titular_id`: una fila huérfana no
+            // habilita nada, porque ya no hay a quién tratar. `Consentimientos::vigente()`
+            // lo hace solo, porque busca por titular.
             $table->string('vigente_clave', 40)->nullable()->after('finalidad_id');
             $table->unique('vigente_clave');
         });
