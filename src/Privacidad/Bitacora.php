@@ -311,15 +311,36 @@ class Bitacora
      * Borra del disco los documentos referenciados por las filas que se van a
      * desvincular.
      *
+     * Solo cuenta como suprimido lo que el disco confirmó haber borrado. Contar
+     * el intento —que es lo que hacía antes, ignorando el retorno de delete()—
+     * produce el peor estado posible de esta feature, y está reproducido con un
+     * directorio de solo lectura: la constancia dice «archivos_suprimidos: 1»,
+     * el PDF sigue en disco y la columna con su ruta ya está anulada.
+     *
+     * Un fallo aborta la transacción entera en vez de seguir con la ruta
+     * intacta. Conservar la ruta parece más suave —el documento sigue siendo
+     * localizable para borrarlo después— pero deja el RUT que suele venir en el
+     * nombre del archivo dentro de una fila que el resto del barrido ya dejó
+     * huérfana: anonimización a medias, y justo la que contradice la garantía de
+     * que ninguna columna sobreviviente identifica al titular. Con el throw todo
+     * vuelve atrás —la persona no queda marcada como anonimizada, la fila
+     * conserva su titular y su ruta— y la corrida se repite cuando el entorno
+     * esté arreglado. Lo único que no vuelve son los archivos ya borrados de
+     * este mismo titular, que reaparecen como `no_encontrados` en el reintento.
+     *
      * @param  Builder  $filas  consulta ya acotada al titular
      * @return array{suprimidos: int, no_encontrados: int}
+     *
+     * @throws ArchivoNoSuprimido si el disco no confirmó alguna supresión
      */
     private function suprimirArchivos(string $tabla, Builder $filas): array
     {
         $suprimidos = 0;
         $noEncontrados = 0;
+        $fallidos = [];
 
-        $disco = Storage::disk((string) config('privacidad.disco_evidencia'));
+        $nombreDisco = (string) config('privacidad.disco_evidencia');
+        $disco = Storage::disk($nombreDisco);
 
         foreach (self::ARCHIVOS[$tabla] ?? [] as $columna) {
             foreach ($filas->clone()->whereNotNull($columna)->pluck($columna) as $ruta) {
@@ -333,9 +354,28 @@ class Bitacora
                     continue;
                 }
 
-                $disco->delete((string) $ruta);
+                // Bucket propio: «estaba y sigue estando» no es lo mismo que «ya
+                // no estaba», y confundirlos es lo que hacía pasar un fallo por
+                // un éxito.
+                if (! $disco->delete((string) $ruta)) {
+                    $fallidos[] = "{$tabla}.{$columna}";
+
+                    continue;
+                }
+
                 $suprimidos++;
             }
+        }
+
+        if ($fallidos !== []) {
+            $cuantos = count($fallidos);
+            $columnas = implode(', ', array_unique($fallidos));
+
+            throw new ArchivoNoSuprimido(
+                "El disco «{$nombreDisco}» no pudo borrar {$cuantos} documento(s) ({$columnas}). "
+                .'La anonimización se revierte entera: anular la ruta dejaría el documento con datos '
+                .'personales en disco y sin forma de encontrarlo. Revisar permisos y volver a correr.',
+            );
         }
 
         return ['suprimidos' => $suprimidos, 'no_encontrados' => $noEncontrados];

@@ -2,6 +2,7 @@
 
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Muni\Shared\Privacidad\ArchivoNoSuprimido;
 use Muni\Shared\Privacidad\BaseLicitud;
 use Muni\Shared\Privacidad\Bitacora;
 use Muni\Shared\Privacidad\Consentimientos;
@@ -147,6 +148,67 @@ it('borra del disco los documentos referenciados, no solo la ruta', function () 
     expect($constancia->datos['archivos_suprimidos'])->toBe(1)
         ->and($constancia->datos['archivos_no_encontrados'])->toBe(0)
         ->and(Consentimiento::sole()->evidencia_path)->toBeNull();
+});
+
+it('un documento que no se pudo borrar aborta la anonimización en vez de darla por hecha', function () {
+    // El defecto que esto cierra, verificado con un directorio de solo lectura:
+    // Storage::delete() devolvía false, nadie miraba el retorno, la constancia
+    // decía «archivos_suprimidos: 1», el PDF seguía en disco y la columna con su
+    // ruta ya estaba anulada. Exactamente el estado que la feature existe para
+    // impedir —un documento con datos personales, vivo y sin dueño— con el
+    // registro afirmando lo contrario.
+    //
+    // Se aborta entero y no se sigue con la ruta intacta: conservar la ruta deja
+    // el RUT escrito en el nombre del archivo dentro de una fila que el resto
+    // del barrido ya dejó huérfana, o sea una anonimización a medias que además
+    // contradice la garantía de que ninguna columna sobreviviente identifica al
+    // titular. Con el throw la transacción vuelve atrás completa: la persona NO
+    // queda marcada como anonimizada, la fila conserva su titular, el documento
+    // conserva su ruta y la corrida se puede repetir cuando se arreglen los
+    // permisos.
+    if (function_exists('posix_geteuid') && posix_geteuid() === 0) {
+        $this->markTestSkipped('root ignora los permisos del directorio: el borrado no falla.');
+    }
+
+    $raiz = sys_get_temp_dir().'/privacidad-solo-lectura-'.Str::random(8);
+    mkdir($raiz.'/consentimientos', 0755, true);
+    file_put_contents($ruta = $raiz.'/consentimientos/11111111-1.pdf', 'firma escaneada');
+    chmod($raiz.'/consentimientos', 0555);
+
+    config([
+        'filesystems.disks.evidencia_de_prueba' => ['driver' => 'local', 'root' => $raiz, 'throw' => false],
+        'privacidad.disco_evidencia' => 'evidencia_de_prueba',
+    ]);
+
+    $finalidad = Finalidad::create([
+        'sistema' => 'discapacidad', 'codigo' => 'difusion', 'nombre' => 'Difusión',
+        'base_licitud' => BaseLicitud::Consentimiento, 'es_accesoria' => true,
+    ]);
+    app(Consentimientos::class)->otorgar(
+        $this->titular, $finalidad, MedioDeConsentimiento::FirmaPapel,
+        ['evidencia_path' => 'consentimientos/11111111-1.pdf'],
+    );
+
+    try {
+        expect(fn () => app(Bitacora::class)->desvincular($this->titular))
+            ->toThrow(ArchivoNoSuprimido::class);
+
+        $consentimiento = Consentimiento::sole();
+
+        expect(file_exists($ruta))->toBeTrue()
+            // La ruta sigue apuntando al documento que sigue existiendo: es lo
+            // que permite reintentar y encontrarlo.
+            ->and($consentimiento->evidencia_path)->toBe('consentimientos/11111111-1.pdf')
+            // Y nada del barrido quedó a medio aplicar.
+            ->and($consentimiento->titular_id)->toBe($this->titular->getKey())
+            ->and(EntradaBitacora::where('evento', 'bitacora.desvinculada')->count())->toBe(0)
+            ->and(EntradaBitacora::whereNotNull('titular_ref')->count())->toBe(0);
+    } finally {
+        chmod($raiz.'/consentimientos', 0755);
+        @unlink($ruta);
+        @rmdir($raiz.'/consentimientos');
+        @rmdir($raiz);
+    }
 });
 
 it('cuenta como no encontrado el archivo que ya no está, sin fallar', function () {
