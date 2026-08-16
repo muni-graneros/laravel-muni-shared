@@ -23,6 +23,14 @@ class TextoInformativo extends Model
         // Inmutable en el contenido. Cerrar la vigencia SÍ es una transición
         // legítima —publicar la versión siguiente cierra la anterior— y por eso
         // Textos::publicar() la hace por query builder, que no dispara eventos.
+        //
+        // Este guardia cubre SOLO el camino del modelo. Las escrituras masivas
+        // del query builder no disparan eventos de Eloquent, así que
+        // `TextoInformativo::query()->update(['contenido' => …])` pasaba por al
+        // lado sin excepción. Eso lo ataja el trigger de
+        // `InmutabilidadEnBaseDeDatos`, en el motor; acá queda la excepción de
+        // dominio para el uso normal. El borrado masivo por query builder sigue
+        // abierto a propósito: ver el alcance escrito en esa clase.
         static::updating(function (): never {
             throw new TextoInmutable(
                 'Un texto publicado no se modifica: los consentimientos que lo apuntan '
