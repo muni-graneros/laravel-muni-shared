@@ -195,6 +195,25 @@ it('publicar una versión nueva sigue pudiendo cerrar la vigencia de la anterior
         ->and($segunda->version)->toBe(2);
 });
 
+it('el motor rechaza mover la fecha en que un texto dejó de estar vigente', function (?string $valor) {
+    $servicio = app(Textos::class);
+    $primera = $servicio->publicar('aviso_recoleccion', 'Texto viejo');
+    $servicio->publicar('aviso_recoleccion', 'Texto nuevo');
+
+    $cerrada = $primera->fresh()->vigente_hasta;
+
+    // Correrla hacia atrás haría aparecer al aviso viejo como ya vencido el día
+    // que alguien lo aceptó; anularla lo devolvería a vigente. Las dos reescriben
+    // qué texto regía cuándo.
+    expect(fn () => DB::table('privacidad_textos')->where('id', $primera->getKey())
+        ->update(['vigente_hasta' => $valor]))
+        ->toThrow(QueryException::class)
+        ->and($primera->fresh()->vigente_hasta->equalTo($cerrada))->toBeTrue();
+})->with([
+    'correrla en el tiempo' => ['2000-01-01 00:00:00'],
+    'reabrir la vigencia' => [null],
+]);
+
 it('desvincular sigue pudiendo cortar el vínculo con el titular en la bitácora', function () {
     $persona = PersonaDePrueba::create(['nombre' => 'Ana', 'documento' => '1-9']);
 

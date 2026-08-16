@@ -61,12 +61,6 @@ final class InmutabilidadEnBaseDeDatos
      *   por trigger algo que el módulo podría querer limpiar mañana.
      * - `updated_at` queda libre: no acredita nada y protegerlo haría fallar
      *   cualquier `touch()` con un error de motor en vez del error de dominio.
-     * - `privacidad_textos.vigente_hasta` lo cierra `Textos::publicar()` al
-     *   publicar la versión siguiente. Cerrar una vigencia no cambia lo que la
-     *   persona leyó; editar el contenido sí. Queda escribible, y eso permite
-     *   reescribir la línea de tiempo de qué aviso estaba vigente cuándo: es
-     *   impacto bajo —el consentimiento guarda el id del texto, no la fecha— y
-     *   está anotado como residuo, no como olvido.
      *
      * `sistema`, `codigo`, `version` y `vigente_desde` están protegidas junto
      * con `contenido` y `hash` porque la prueba no es solo el texto: es QUÉ
@@ -122,10 +116,28 @@ final class InmutabilidadEnBaseDeDatos
      * anonimizadas, y ponerla en NULL destruye la agrupación que hace legible un
      * caso completo. Las dos cosas son alteración de la evidencia.
      *
+     * `privacidad_textos.vigente_hasta` es la otra: `Textos::publicar()` cierra
+     * la vigencia de la versión anterior al publicar la siguiente, una sola vez
+     * y sobre un NULL —la consulta filtra por `vigente_hasta IS NULL`—. Mientras
+     * fue libremente escribible se podía reescribir la línea de tiempo de qué
+     * aviso estaba vigente cuándo, que es parte de lo que la evidencia acredita:
+     * el consentimiento apunta al id del texto, pero la fecha es la que dice si
+     * ese texto era el vigente el día que la persona lo aceptó.
+     *
+     * Esto le cambia el desenlace a una carrera que antes pasaba en silencio:
+     * dos publicadores simultáneos que cierran la misma vigencia. Antes el
+     * segundo pisaba la fecha del primero; ahora el motor lo rechaza. Por eso
+     * `publicarVersionSiguiente()` lee la vigente con `lockForUpdate()`: con el
+     * candado el segundo publicador espera, ve la vigencia ya cerrada y ni
+     * siquiera intenta el segundo cierre. Sin el candado —o sea, en SQLite—
+     * quedaría un error del motor donde antes había una alteración muda, que es
+     * la dirección correcta para equivocarse.
+     *
      * @var array<string, list<string>>
      */
     public const COLUMNAS_UNA_SOLA_VEZ = [
         'privacidad_bitacora' => ['titular_ref'],
+        'privacidad_textos' => ['vigente_hasta'],
     ];
 
     /**
