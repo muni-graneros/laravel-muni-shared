@@ -3,6 +3,7 @@
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Muni\Shared\Privacidad\AplicarRetencion;
 use Muni\Shared\Privacidad\BaseLicitud;
@@ -233,6 +234,71 @@ it('el barrido conoce exactamente las tablas del esquema que guardan un titular'
     sort($declaradas);
 
     expect(tablasDelModuloConTitular())->toBe($declaradas);
+});
+
+it('las rutas de documento que se anulan son exactamente las que se borran del disco', function () {
+    // Tercera guardia de deriva, hermana de las dos de arriba y del mismo tipo
+    // de defecto: TABLAS y ARCHIVOS son dos listas que hay que mover juntas y
+    // nada obligaba a hacerlo. Si se agrega una columna de ruta a TABLAS y no a
+    // ARCHIVOS, la anonimización anula la ruta y deja el PDF vivo en disco, sin
+    // dueño y sin forma de encontrarlo —el defecto que ARCHIVOS existe para
+    // impedir—. Al revés, una columna en ARCHIVOS que TABLAS ya no anula borra
+    // el archivo y deja la ruta apuntando al vacío.
+    /** @var array<string, array<string, mixed>> $tablas */
+    $tablas = (new ReflectionClass(Bitacora::class))->getConstant('TABLAS');
+    /** @var array<string, list<string>> $archivos */
+    $archivos = (new ReflectionClass(Bitacora::class))->getConstant('ARCHIVOS');
+
+    $enArchivos = collect($archivos)
+        ->flatMap(fn (array $columnas, string $tabla) => collect($columnas)->map(fn (string $c) => "{$tabla}.{$c}"))
+        ->sort()->values()->all();
+
+    // Se reconoce una ruta por el sufijo del nombre, que es la convención del
+    // esquema (`respuesta_path`, `evidencia_path`). Una columna de ruta que no
+    // lo siga se escapa de esta guardia: si algún día existe, va nombrada acá.
+    $rutasEnTablas = collect($tablas)
+        ->flatMap(fn (array $columnas, string $tabla) => collect(array_keys($columnas))
+            ->filter(fn (string $c) => str_ends_with($c, '_path'))
+            ->map(fn (string $c) => "{$tabla}.{$c}"))
+        ->sort()->values()->all();
+
+    expect($enArchivos)->toBe($rutasEnTablas)
+        // Y que no sea una comparación de dos listas vacías.
+        ->and($enArchivos)->toContain('privacidad_solicitudes.respuesta_path');
+
+    // Además: lo que se borra tiene que quedar anulado, no con centinela. Una
+    // ruta con «[suprimido al anonimizar]» no es una ruta.
+    foreach ($archivos as $tabla => $columnas) {
+        foreach ($columnas as $columna) {
+            expect(array_key_exists($columna, $tablas[$tabla] ?? []))->toBeTrue()
+                ->and($tablas[$tabla][$columna])->toBeNull();
+        }
+    }
+});
+
+it('la retención borra del disco la respuesta al titular y el consentimiento firmado', function () {
+    // El camino de producción: hasta ahora el borrado solo se ejercitaba
+    // llamando a Bitacora::desvincular() a mano, y solo sobre `evidencia_path`.
+    // Sacar `respuesta_path` de ARCHIVOS dejaba la suite entera en verde con el
+    // expediente del titular vivo en disco.
+    Storage::fake('local');
+
+    $rut = str_replace(['.', '-'], '', (string) $this->titular->documento);
+    Storage::disk('local')->put("respuestas/{$rut}.pdf", 'expediente completo');
+    Storage::disk('local')->put("consentimientos/{$rut}.pdf", 'firma escaneada');
+    // El de la persona vigente: el barrido no puede llevárselo por delante.
+    Storage::disk('local')->put('respuestas/222222222.pdf', 'expediente de la vigente');
+
+    app(AplicarRetencion::class)->ejecutar(simulacion: false);
+
+    Storage::disk('local')->assertMissing("respuestas/{$rut}.pdf");
+    Storage::disk('local')->assertMissing("consentimientos/{$rut}.pdf");
+    Storage::disk('local')->assertExists('respuestas/222222222.pdf');
+
+    $corrida = EntradaBitacora::where('evento', 'retencion.constancia')->sole();
+
+    expect($corrida->datos['archivos_suprimidos'])->toBe(2)
+        ->and($corrida->datos['archivos_no_encontrados'])->toBe(0);
 });
 
 it('después de anonimizar, ninguna tabla del módulo resuelve al titular', function () {
