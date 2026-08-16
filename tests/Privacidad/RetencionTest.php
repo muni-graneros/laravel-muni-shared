@@ -8,6 +8,7 @@ use Muni\Shared\Privacidad\Modelos\EntradaBitacora;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
 use Muni\Shared\Privacidad\NingunTitularVencido;
 use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
+use Muni\Shared\Tests\Privacidad\Fixtures\UsuarioDePrueba;
 
 beforeEach(function () {
     config(['privacidad.sistema' => 'discapacidad']);
@@ -98,6 +99,11 @@ it('las cantidades del barrido se publican una vez por corrida, no por titular',
     // resuelve el resto. Es el único de los tres canales de correlación
     // conocidos que el módulo controla, así que se agrega por corrida: la suma
     // sigue delatando el disco mal configurado sin decir de quién era cada fila.
+    // Con sesión abierta: es el caso que hace peligroso al user_id de la
+    // constancia. Sin esto, Auth::id() sería null y la aserción de más abajo no
+    // probaría nada.
+    $this->actingAs(new UsuarioDePrueba(['id' => 77]));
+
     $otra = PersonaDePrueba::create([
         'nombre' => 'Ema Ríos',
         'documento' => '33.333.333-3',
