@@ -16,7 +16,10 @@ use Muni\Shared\Privacidad\Modelos\Finalidad;
  */
 class Consentimientos
 {
-    public function __construct(private readonly RegistroDeEvidencia $evidencia) {}
+    public function __construct(
+        private readonly RegistroDeEvidencia $evidencia,
+        private readonly Textos $textos,
+    ) {}
 
     /** @param array<string, mixed> $opciones */
     public function otorgar(
@@ -52,6 +55,14 @@ class Consentimientos
                 'medio' => $medio,
                 'evidencia_path' => $opciones['evidencia_path'] ?? null,
                 'version_texto' => $opciones['version_texto'] ?? null,
+                // A la fila exacta, no a un string suelto: `version_texto` no
+                // obligaba a nadie a llenarlo y no probaba nada. Ausente el
+                // código, o sin texto vigente con ese código, queda null: es el
+                // camino de los consentimientos en papel de antes de este texto,
+                // que no tienen con qué acreditar la versión.
+                'texto_id' => isset($opciones['codigo_texto'])
+                    ? $this->textos->vigente((string) $opciones['codigo_texto'])?->getKey()
+                    : null,
                 // Enum y no texto: es una de las dos columnas que el barrido de
                 // anonimización conserva por ser categórica, y esa promesa solo
                 // se sostiene si la columna no puede recibir el nombre del

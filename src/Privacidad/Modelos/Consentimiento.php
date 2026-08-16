@@ -38,6 +38,12 @@ class Consentimiento extends Model
         return $this->belongsTo(Finalidad::class, 'finalidad_id');
     }
 
+    /** @return BelongsTo<TextoInformativo, Consentimiento> */
+    public function texto(): BelongsTo
+    {
+        return $this->belongsTo(TextoInformativo::class, 'texto_id');
+    }
+
     /** @param Builder<Consentimiento> $query */
     public function scopeVigentes(Builder $query): void
     {

@@ -510,7 +510,9 @@ it('toda columna clasificable de una tabla barrida está clasificada', function 
     $conservadas = [
         'privacidad_bitacora' => ['datos', 'evento', 'id', 'sistema', 'titular_ref', 'titular_type'],
         'privacidad_solicitudes' => ['estado', 'id', 'sistema', 'solicitante', 'tipo', 'titular_ref', 'titular_type'],
-        'privacidad_consentimientos' => ['finalidad_id', 'id', 'medio', 'otorgado_por', 'titular_ref', 'titular_type', 'version_texto'],
+        'privacidad_consentimientos' => [
+            'finalidad_id', 'id', 'medio', 'otorgado_por', 'texto_id', 'titular_ref', 'titular_type', 'version_texto',
+        ],
         'privacidad_informaciones' => ['id', 'medio', 'sistema', 'texto_id', 'titular_ref', 'titular_type'],
     ];
 
