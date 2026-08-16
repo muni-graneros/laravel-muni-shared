@@ -53,6 +53,11 @@ return [
     // ningún documento.
     'disco_evidencia' => env('PRIVACIDAD_DISCO_EVIDENCIA', 'local'),
 
+    // Registrar una rectificación u oposición suspende el tratamiento hasta
+    // resolverla. Configurable porque frena la operación del mesón: revisarlo
+    // con la jefatura antes de producción.
+    'bloquear_durante_solicitud' => (bool) env('PRIVACIDAD_BLOQUEAR_DURANTE_SOLICITUD', true),
+
     // Datos del responsable del tratamiento, que van en el RAT y en las
     // respuestas al titular. Por municipio, nunca hardcodeados.
     'responsable' => [

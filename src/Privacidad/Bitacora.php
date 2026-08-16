@@ -119,6 +119,23 @@ class Bitacora
             'ip_hash' => null,
             'user_id' => null,
         ],
+        'privacidad_bloqueos' => [
+            'user_id' => null,
+            // Prosa dictada por el funcionario que aplica el bloqueo («la hija
+            // llamó a reclamar por el apellido», «se opone y adjunta cédula de
+            // la madre»): puede nombrar al titular o a un tercero. NOT NULL,
+            // va con centinela, igual que `detalle` en las solicitudes.
+            //
+            // `finalidad_id` y `solicitud_id` SE CONSERVAN: son llaves a
+            // catálogos del propio módulo (una finalidad no es una persona, y
+            // `privacidad_solicitudes` queda huérfana en la misma corrida), el
+            // mismo criterio que ya conserva `finalidad_id` en
+            // `privacidad_consentimientos`. Perder ese puntero no borraría
+            // ningún dato adicional del titular: solo desarmaría la relación
+            // «este bloqueo lo abrió esta solicitud», que es justo el hecho
+            // auditable que el bloqueo existe para dejar constancia.
+            'motivo' => self::SUPRIMIDO,
+        ],
     ];
 
     /**
@@ -183,7 +200,7 @@ class Bitacora
             // escribir esa fila nunca más. Darle el ref a esa fila publica el
             // identificador de grupo justo al lado del instante: se busca a la
             // persona por su updated_at, se cae en la fila de ese segundo y de
-            // ahí se leen TODAS sus filas huérfanas, en las cuatro tablas. Es la
+            // ahí se leen TODAS sus filas huérfanas, en las cinco tablas. Es la
             // misma correlación que abría el ULID, entrando por otra puerta.
             // Esas filas se desvinculan igual —pierden el titular_id y el texto
             // libre—, pero se quedan fuera del grupo.

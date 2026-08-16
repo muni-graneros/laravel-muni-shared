@@ -10,7 +10,10 @@ use Muni\Shared\Privacidad\Modelos\Solicitud;
 
 class Solicitudes
 {
-    public function __construct(private readonly RegistroDeEvidencia $evidencia) {}
+    public function __construct(
+        private readonly RegistroDeEvidencia $evidencia,
+        private readonly Bloqueos $bloqueos,
+    ) {}
 
     public function registrar(
         Model $titular,
@@ -55,6 +58,15 @@ class Solicitudes
                 'solicitud_id' => $solicitud->getKey(),
                 'tipo' => $tipo->value,
             ], $titular);
+
+            // Solo rectificación y oposición: un acceso o una portabilidad no
+            // ponen nada en disputa, y bloquear por ellas frenaría la atención
+            // sin ninguna razón legal.
+            $disputa = in_array($tipo, [TipoDeSolicitud::Rectificacion, TipoDeSolicitud::Oposicion], true);
+
+            if ($disputa && config('privacidad.bloquear_durante_solicitud')) {
+                $this->bloqueos->bloquear($titular, null, "Solicitud de {$tipo->etiqueta()} en trámite", $solicitud);
+            }
 
             return $solicitud;
         });
@@ -113,6 +125,12 @@ class Solicitudes
                 'solicitud_id' => $solicitud->getKey(),
                 'tipo' => $solicitud->tipo->value,
             ], $solicitud->titular);
+
+            // Se resuelva como se resuelva —acogida, rechazada— la disputa
+            // terminó: el bloqueo que la registró no tiene ya ninguna razón
+            // para seguir vigente. No hace nada si nunca se bloqueó (config
+            // apagada, o un tipo que no dispara bloqueo).
+            $this->bloqueos->levantarPorSolicitud($solicitud);
         });
     }
 

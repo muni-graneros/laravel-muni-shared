@@ -445,7 +445,7 @@ it('el identificador de grupo no viaja junto al instante de la anonimización', 
     // llave directa: se buscan las personas anonimizadas por su marca
     // («ANONIMIZADO»), se lee su `updated_at` —congelado, porque nadie vuelve a
     // escribir esa fila—, se cae en la fila del módulo de ese mismo segundo y
-    // con su ref se leen todas las demás filas huérfanas, en las cuatro tablas.
+    // con su ref se leen todas las demás filas huérfanas, en las cinco tablas.
     // Por eso el ref solo puede vivir en filas cuyas fechas son hechos de
     // negocio corrientes, anteriores a la anonimización.
     //
@@ -520,6 +520,11 @@ it('toda columna clasificable de una tabla barrida está clasificada', function 
             'finalidad_id', 'id', 'medio', 'otorgado_por', 'texto_id', 'titular_ref', 'titular_type', 'version_texto',
         ],
         'privacidad_informaciones' => ['id', 'medio', 'sistema', 'texto_id', 'titular_ref', 'titular_type'],
+        // finalidad_id y solicitud_id se conservan por el mismo criterio que
+        // finalidad_id en privacidad_consentimientos: son llaves a catálogos
+        // del propio módulo, no a la persona. Ver el docblock de TABLAS en
+        // Bitacora.
+        'privacidad_bloqueos' => ['finalidad_id', 'id', 'sistema', 'solicitud_id', 'titular_ref', 'titular_type'],
     ];
 
     /** @var array<string, array<string, mixed>> $tablas */
