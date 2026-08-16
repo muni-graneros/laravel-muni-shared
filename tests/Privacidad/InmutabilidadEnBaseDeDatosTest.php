@@ -9,6 +9,7 @@ use Muni\Shared\Privacidad\Modelos\EntradaBitacora;
 use Muni\Shared\Privacidad\Modelos\TextoInformativo;
 use Muni\Shared\Privacidad\Textos;
 use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
+use Muni\Shared\Tests\TestCase;
 
 /**
  * El agujero que estas pruebas cierran: los guardias `updating` de los modelos
@@ -157,6 +158,26 @@ it('deja constancia de que el borrado por query builder sigue abierto', function
 
     expect(EntradaBitacora::count())->toBe(0);
 });
+
+it('el down de la migración quita el guardia y volver a instalarlo lo repone', function () {
+    app(Textos::class)->publicar('aviso_recoleccion', 'Original');
+
+    InmutabilidadEnBaseDeDatos::desproteger(DB::connection());
+    TextoInformativo::query()->update(['contenido' => 'sin guardia sí se puede']);
+    $sinGuardia = TextoInformativo::sole()->contenido;
+
+    InmutabilidadEnBaseDeDatos::proteger(DB::connection());
+
+    expect($sinGuardia)->toBe('sin guardia sí se puede')
+        ->and(fn () => TextoInformativo::query()->update(['contenido' => 'otra vez']))
+        ->toThrow(QueryException::class);
+})->skip(
+    // En MariaDB un DROP TRIGGER hace commit implícito y se lleva puesta la
+    // transacción de RefreshDatabase, contaminando las pruebas siguientes. El
+    // ida y vuelta contra el motor real se comprobó a mano con el cliente.
+    fn () => TestCase::hayMariaDb(),
+    'El ida y vuelta del guardia solo se prueba en SQLite: en MariaDB el DDL rompe la transacción de la suite.',
+);
 
 it('en un driver sin SQL propio no promete protección', function () {
     expect(InmutabilidadEnBaseDeDatos::soporta('sqlite'))->toBeTrue()
