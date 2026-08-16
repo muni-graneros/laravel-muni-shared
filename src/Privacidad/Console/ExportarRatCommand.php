@@ -3,6 +3,7 @@
 namespace Muni\Shared\Privacidad\Console;
 
 use Illuminate\Console\Command;
+use Muni\Shared\Privacidad\Modelos\DecisionAutomatizada;
 use Muni\Shared\Privacidad\Modelos\Encargado;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
 
@@ -30,6 +31,14 @@ class ExportarRatCommand extends Command
         // sin esto, cada finalidad dispara su propia consulta a la tabla pivote.
         $finalidades = Finalidad::query()->delSistema($sistema)->with('encargados')->orderBy('codigo')->get();
 
+        // Se lee una sola vez y se reutiliza en los dos caminos (json y tabla):
+        // es la misma pregunta —¿qué decisiones automatizadas toma este
+        // sistema?— contestada en dos formatos, no dos preguntas distintas.
+        // `with('finalidad')` por el mismo motivo que `with('encargados')`
+        // arriba: sin él, el `finalidad_id`.codigo de cada decisión dispara su
+        // propia consulta al mapear más abajo.
+        $decisiones = DecisionAutomatizada::query()->delSistema($sistema)->with('finalidad')->get();
+
         // El chequeo de --json va primero: quien redirige la salida a
         // `json_decode` no puede recibir una línea de advertencia en texto
         // plano solo porque el sistema no declaró finalidades todavía.
@@ -55,6 +64,17 @@ class ExportarRatCommand extends Command
                         'rol' => $e->rol,
                         'contrato_vence_en' => $e->contrato_vence_en?->toDateString(),
                     ])->all(),
+                ])->all(),
+                // Siempre presente, aunque esté vacía: un arreglo vacío dice
+                // «se revisó y no hay ninguna»; una clave ausente diría «este
+                // RAT no llegó a contestar la pregunta». Son respuestas
+                // distintas ante una fiscalización y el export no las mezcla.
+                'decisiones_automatizadas' => $decisiones->map(fn (DecisionAutomatizada $d): array => [
+                    'descripcion' => $d->descripcion,
+                    'logica' => $d->logica,
+                    'consecuencias' => $d->consecuencias,
+                    'permite_revision_humana' => $d->permite_revision_humana,
+                    'finalidad' => $d->finalidad?->codigo,
                 ])->all(),
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 
@@ -92,6 +112,23 @@ class ExportarRatCommand extends Command
         if ($sinContrato->isNotEmpty()) {
             $this->warn('Encargados sin contrato al día: '.$sinContrato->implode(', ')
                 .'. La ley exige contrato con cada encargado del tratamiento.');
+        }
+
+        // Se declara el caso vacío en vez de callar: un RAT mudo sobre el
+        // tema es indistinguible de uno que no llegó a revisarlo, y la ley da
+        // derecho a no ser objeto de decisiones automatizadas con efectos
+        // significativos — contestar «ninguna» es contestar la pregunta.
+        if ($decisiones->isEmpty()) {
+            $this->info("El sistema «{$sistema}» no declara decisiones automatizadas con efectos significativos sobre los titulares.");
+
+            return self::SUCCESS;
+        }
+
+        $sinRevision = $decisiones->where('permite_revision_humana', false)->pluck('descripcion');
+
+        if ($sinRevision->isNotEmpty()) {
+            $this->warn('Decisiones automatizadas sin revisión humana: '.$sinRevision->implode(', ')
+                .'. El titular tiene derecho a pedir intervención humana.');
         }
 
         return self::SUCCESS;
