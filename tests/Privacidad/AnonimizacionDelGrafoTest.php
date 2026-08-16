@@ -115,7 +115,11 @@ function columnasDeIdentificador(): array
 }
 
 beforeEach(function () {
-    config(['privacidad.sistema' => 'discapacidad']);
+    // 'disco_evidencia' ya no tiene default (ver config/privacidad.php): la
+    // historia sembrada abajo siempre deja evidencia_path/respuesta_path/
+    // acreditacion_path seteados, así que sin esto cualquier desvincular()
+    // de este archivo truena con DiscoEvidenciaNoConfigurado.
+    config(['privacidad.sistema' => 'discapacidad', 'privacidad.disco_evidencia' => 'local']);
 
     // El caso que hace peligrosos a los `user_*`: un adoptante con portal
     // ciudadano, donde quien está autenticado es el propio titular. El módulo

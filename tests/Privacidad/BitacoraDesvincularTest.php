@@ -8,6 +8,7 @@ use Muni\Shared\Privacidad\BaseLicitud;
 use Muni\Shared\Privacidad\Bitacora;
 use Muni\Shared\Privacidad\Consentimientos;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
+use Muni\Shared\Privacidad\DiscoEvidenciaNoConfigurado;
 use Muni\Shared\Privacidad\MedioDeConsentimiento;
 use Muni\Shared\Privacidad\Modelos\Consentimiento;
 use Muni\Shared\Privacidad\Modelos\EntradaBitacora;
@@ -18,7 +19,14 @@ use Muni\Shared\Privacidad\TipoDeSolicitud;
 use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
 
 beforeEach(function () {
-    config(['privacidad.sistema' => 'discapacidad']);
+    config([
+        'privacidad.sistema' => 'discapacidad',
+        // Ya no hay default de fábrica (ver config/privacidad.php): cada test
+        // que ejercite un documento real declara el disco, como cualquier
+        // sistema adoptante. Los tests que ejercitan la falta de esta
+        // configuración la sobrescriben a propósito.
+        'privacidad.disco_evidencia' => 'local',
+    ]);
     $this->titular = PersonaDePrueba::create([
         'nombre' => 'Rocío Paredes',
         'documento' => '11.111.111-1',
@@ -246,6 +254,87 @@ it('cuenta como no encontrado el archivo que ya no está, sin fallar', function 
 
     expect($barrido->archivosNoEncontrados)->toBe(1)
         ->and($barrido->archivosSuprimidos)->toBe(0);
+});
+
+it('sin disco_evidencia configurado, un titular sin archivos que borrar igual se desvincula', function () {
+    // Comportamiento perezoso, a propósito: si esta persona nunca otorgó un
+    // consentimiento con evidencia ni tiene una solicitud con respuesta o
+    // acreditación, no hay ningún documento que buscar, así que no hace falta
+    // resolver el disco para nada. Que el módulo trone igual sería negarse a
+    // desvincular a alguien por una clave que, para su caso, es irrelevante.
+    config(['privacidad.disco_evidencia' => '']);
+
+    $barrido = app(Bitacora::class)->desvincular($this->titular);
+
+    expect($barrido->filas)->toBeGreaterThan(0);
+});
+
+it('disco_evidencia en blanco truena apenas hay un documento que borrar, no lo da por resuelto', function () {
+    // El defecto que esto cierra: `PRIVACIDAD_DISCO_EVIDENCIA=` (presente y
+    // vacía) no activa el default de env() —solo lo hace la clave AUSENTE—, y
+    // `Storage::disk('')` resuelve en silencio al disco por defecto de
+    // Laravel. El barrido buscaba ahí, no encontraba nada, lo contaba como
+    // `archivos_no_encontrados` y seguía: la anonimización terminaba
+    // «lista» con el consentimiento firmado todavía en disco. Ahora truena
+    // antes de tocar ningún disco.
+    config(['privacidad.disco_evidencia' => '']);
+
+    $finalidad = Finalidad::create([
+        'sistema' => 'discapacidad', 'codigo' => 'difusion', 'nombre' => 'Difusión',
+        'base_licitud' => BaseLicitud::Consentimiento, 'es_accesoria' => true,
+    ]);
+    app(Consentimientos::class)->otorgar(
+        $this->titular, $finalidad, MedioDeConsentimiento::FirmaPapel,
+        ['evidencia_path' => 'consentimientos/11111111-1.pdf'],
+    );
+
+    expect(fn () => app(Bitacora::class)->desvincular($this->titular))
+        ->toThrow(DiscoEvidenciaNoConfigurado::class);
+
+    // Y la transacción se revierte entera, igual que con ArchivoNoSuprimido:
+    // ni la fila queda huérfana ni la constancia dice que se desvinculó.
+    expect(Consentimiento::sole()->titular_id)->toBe($this->titular->getKey())
+        ->and(EntradaBitacora::where('evento', 'bitacora.desvinculada')->count())->toBe(0);
+});
+
+it('disco_evidencia ausente del todo se comporta igual que en blanco, no cae a ningún default', function () {
+    // No es lo mismo, para env(), pero para este módulo tiene que serlo:
+    // ninguna de las dos formas de «no configurado» puede dejar vivo un
+    // documento con datos personales sin que nadie se entere.
+    config(['privacidad.disco_evidencia' => null]);
+
+    $finalidad = Finalidad::create([
+        'sistema' => 'discapacidad', 'codigo' => 'difusion', 'nombre' => 'Difusión',
+        'base_licitud' => BaseLicitud::Consentimiento, 'es_accesoria' => true,
+    ]);
+    app(Consentimientos::class)->otorgar(
+        $this->titular, $finalidad, MedioDeConsentimiento::FirmaPapel,
+        ['evidencia_path' => 'consentimientos/11111111-1.pdf'],
+    );
+
+    expect(fn () => app(Bitacora::class)->desvincular($this->titular))
+        ->toThrow(DiscoEvidenciaNoConfigurado::class);
+});
+
+it('disco_evidencia con un nombre que no tiene driver configurado truena con el mismo tipo de excepción', function () {
+    // Ya fallaba fuerte antes de este cambio —Storage::disk() lanza
+    // InvalidArgumentException—, pero con la excepción propia de Laravel
+    // escapando de un módulo que en el resto de sus fallos de configuración
+    // usa sus propias clases. Se envuelve para que quien atrapa
+    // DiscoEvidenciaNoConfigurado cubra las dos formas de mala configuración.
+    config(['privacidad.disco_evidencia' => 'disco_que_no_existe']);
+
+    $finalidad = Finalidad::create([
+        'sistema' => 'discapacidad', 'codigo' => 'difusion', 'nombre' => 'Difusión',
+        'base_licitud' => BaseLicitud::Consentimiento, 'es_accesoria' => true,
+    ]);
+    app(Consentimientos::class)->otorgar(
+        $this->titular, $finalidad, MedioDeConsentimiento::FirmaPapel,
+        ['evidencia_path' => 'consentimientos/11111111-1.pdf'],
+    );
+
+    expect(fn () => app(Bitacora::class)->desvincular($this->titular))
+        ->toThrow(DiscoEvidenciaNoConfigurado::class);
 });
 
 it('la evidencia de identidad se vacía y el método sobrevive, en cualquier motor', function () {

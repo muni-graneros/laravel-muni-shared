@@ -14,7 +14,10 @@ use Muni\Shared\Privacidad\TipoDeSolicitud;
 use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
 
 beforeEach(function () {
-    config(['privacidad.sistema' => 'discapacidad']);
+    // 'disco_evidencia' ya no tiene default (ver config/privacidad.php): este
+    // archivo desvincula titulares con `acreditacion_path` seteado, así que
+    // sin esto Bitacora::desvincular() truena con DiscoEvidenciaNoConfigurado.
+    config(['privacidad.sistema' => 'discapacidad', 'privacidad.disco_evidencia' => 'local']);
 
     $this->titular = PersonaDePrueba::create([
         'nombre' => 'Rocío Paredes',

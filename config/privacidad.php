@@ -36,22 +36,55 @@ return [
     // personal localizable en uno perdido, que sigue siendo dato personal y ya
     // no hay forma de encontrar para suprimirlo. Y el borrado no lo puede hacer
     // el adoptante «después», porque después de anular la columna nadie sabe
-    // qué archivo era.
+    // qué archivo era. Por eso configurarla es paso obligatorio de adopción y
+    // está en el README.
     //
-    // Consecuencia de que la declare el adoptante: si acá dice un disco y los
-    // documentos viven en otro, el barrido no encuentra nada, no falla, y la
-    // anonimización deja los expedientes vivos. Es indistinguible de «el archivo
-    // ya lo había purgado el adoptante», así que el módulo no lo puede detectar
-    // por su cuenta: la señal es `archivos_no_encontrados` alto con
-    // `archivos_suprimidos` en cero en la constancia `retencion.constancia`.
-    // Por eso configurarla es paso obligatorio de adopción y está en el README.
+    // Sin default, y antes lo tenía ('local'), con un comentario que decía que
+    // dejarla vacía «revienta el barrido». Es falso, comprobado ejecutando —no
+    // leyendo— las tres formas de no configurarla: `env()` solo aplica el
+    // default cuando la clave está AUSENTE del entorno, así que
+    // `PRIVACIDAD_DISCO_EVIDENCIA=` (presente y vacía) da `''`, no 'local'. Y
+    // `Storage::disk('')` no truena: cae en `getDefaultDriver()` en silencio,
+    // lo mismo que hacía cuando la clave estaba ausente y el default 'local' SÍ
+    // se aplicaba. Las tres rutas —vacía, ausente, apuntando a un disco real
+    // que no es donde vive el documento— terminaban en el mismo sitio: el
+    // barrido busca en un disco, no encuentra nada, lo cuenta como
+    // `archivos_no_encontrados` y sigue. Un sistema adoptante lo sufrió así: la
+    // clave nunca llegó a su `.env` ni a su `.env.example`, cayó en el default
+    // 'local' sin que nadie lo decidiera, y sus documentos vivían en otro
+    // disco.
     //
-    // Default 'local' —el disco privado de Laravel— y no 'public': el
-    // consentimiento firmado de un vecino no se sirve por URL. Es un default
-    // plausible, no una promesa; a diferencia de `sistema`, dejarlo vacío no
-    // avisa nada, revienta el barrido de cualquier sistema aunque no guarde
-    // ningún documento.
-    'disco_evidencia' => env('PRIVACIDAD_DISCO_EVIDENCIA', 'local'),
+    // Por qué no un default 'plausible' en su lugar (algún disco que existiera
+    // siempre): acá un default no es una convención de nombres como en
+    // `sistema` de arriba —ahí el riesgo es un marcador de posición que PARECE
+    // un nombre real y tarda en notarse—. Acá cualquier default resuelve a un
+    // disco que EXISTE, así que la operación nunca truena por sí sola: sigue
+    // corriendo, borra o no borra según la suerte de que el adoptante también
+    // use ese mismo disco, y el único síntoma queda enterrado en un conteo de
+    // la constancia que hay que ir a buscar. Un default aquí no reduce el
+    // riesgo de mala configuración, lo esconde mejor.
+    //
+    // Por eso el módulo ahora se niega a barrer hasta que el adoptante declare
+    // el disco: `Bitacora::resolverDisco()` lanza `DiscoEvidenciaNoConfigurado`
+    // apenas encuentra un documento que borrar y esta clave está en blanco.
+    // (Un nombre que no resuelve a un disco configurado ya fallaba fuerte —
+    // `Storage::disk()` lanza `InvalidArgumentException`—; lo que faltaba
+    // cubrir era la cadena vacía, indistinguible de «no configurado» solo para
+    // quien lee el `.env`, no para `env()`.) La clave queda en el mismo
+    // régimen que `sistema`: sin default. La diferencia es que acá el efecto
+    // de no configurarla no es un aviso por consola, es una excepción que
+    // aborta la anonimización, porque lo que está en juego no es un rótulo en
+    // un reporte sino un documento con datos personales que deja de ser
+    // localizable.
+    //
+    // Lo que este cambio NO cierra, para no volver a prometer de más: un
+    // nombre de disco que SÍ resuelve —existe en `filesystems.disks`— pero no
+    // es donde el adoptante guarda los documentos sigue sin poder detectarlo
+    // el módulo por su cuenta. Ese caso no truena, porque no hay nada
+    // técnicamente mal configurado; sigue siendo la señal de
+    // `archivos_no_encontrados` alto con `archivos_suprimidos` en cero en la
+    // constancia `retencion.constancia`.
+    'disco_evidencia' => env('PRIVACIDAD_DISCO_EVIDENCIA'),
 
     // Registrar una rectificación u oposición suspende el tratamiento hasta
     // resolverla. Configurable porque frena la operación del mesón: revisarlo

@@ -2,12 +2,14 @@
 
 namespace Muni\Shared\Privacidad;
 
+use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use InvalidArgumentException;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 
 /**
@@ -163,8 +165,12 @@ class Bitacora
      * `Consentimientos::otorgar(['evidencia_path' => …])`— y la única llamada a
      * `Storage` en todo `src/` es este borrado. El módulo no eligió el disco ni
      * subió el documento: borra en el disco que el adoptante declaró en
-     * `privacidad.disco_evidencia`, y si esa declaración está equivocada no
-     * borra nada y no se entera (ver el comentario de esa clave).
+     * `privacidad.disco_evidencia`. Si esa declaración está en blanco o nombra
+     * un disco sin driver, `resolverDisco()` truena con
+     * `DiscoEvidenciaNoConfigurado` antes de tocar nada —ver el comentario de
+     * esa clave—; si en cambio SÍ resuelve pero a un disco que no es donde
+     * viven los documentos, eso el módulo no lo puede detectar por su cuenta
+     * y sigue sin borrar nada.
      *
      * @var array<string, list<string>>
      */
@@ -484,6 +490,9 @@ class Bitacora
      * @return array{suprimidos: int, no_encontrados: int}
      *
      * @throws ArchivoNoSuprimido si el disco no confirmó alguna supresión
+     * @throws DiscoEvidenciaNoConfigurado si hay un documento que borrar y el
+     *                                     disco declarado está en blanco o no
+     *                                     tiene driver configurado
      */
     private function suprimirArchivos(string $tabla, Builder $filas): array
     {
@@ -491,15 +500,28 @@ class Bitacora
         $noEncontrados = 0;
         $fallidos = [];
 
-        $nombreDisco = (string) config('privacidad.disco_evidencia');
-        $disco = Storage::disk($nombreDisco);
+        // Resuelto perezoso, y no antes del bucle: un titular sin ningún
+        // documento en esta tabla (o en ninguna) no tiene por qué exigir el
+        // disco configurado, y desvincular() recorre las cinco tablas de
+        // TABLAS aunque solo dos tengan columnas de ruta. Resolver antes
+        // convertía cada desvinculación —tenga o no archivos— en una
+        // dependencia dura de `privacidad.disco_evidencia`.
+        $disco = null;
+        $nombreDisco = null;
 
         foreach (self::ARCHIVOS[$tabla] ?? [] as $columna) {
             foreach ($filas->clone()->whereNotNull($columna)->pluck($columna) as $ruta) {
+                if ($disco === null) {
+                    $nombreDisco = trim((string) config('privacidad.disco_evidencia'));
+                    $disco = $this->resolverDisco($nombreDisco);
+                }
+
                 // Un archivo que ya no está no es un error: pudo borrarlo la
                 // purga de sensibles del sistema adoptante, que corre antes. Se
                 // cuenta, eso sí, porque el mismo síntoma aparece cuando el
-                // disco configurado no es el correcto.
+                // disco configurado resuelve pero no es el correcto —ese caso
+                // sigue sin poder distinguirlo el módulo, ver el comentario de
+                // `privacidad.disco_evidencia`—.
                 if (! $disco->exists((string) $ruta)) {
                     $noEncontrados++;
 
@@ -531,5 +553,52 @@ class Bitacora
         }
 
         return ['suprimidos' => $suprimidos, 'no_encontrados' => $noEncontrados];
+    }
+
+    /**
+     * Resuelve el disco declarado en `privacidad.disco_evidencia`, o truena.
+     *
+     * Antes esto era `Storage::disk((string) config(...))` inline, y con la
+     * clave en blanco eso no tronaba: `Storage::disk('')` cae en
+     * `getDefaultDriver()` en silencio —la implementación de
+     * `FilesystemManager::disk()` hace `$name ?: $this->getDefaultDriver()`—,
+     * así que una clave vacía y una clave ausente terminaban resolviendo al
+     * mismo disco por defecto, sin que nada lo distinguiera de una
+     * configuración correcta. Comprobado ejecutando, no leyendo: `env()`
+     * solo aplica su default cuando la variable está ausente, así que
+     * `PRIVACIDAD_DISCO_EVIDENCIA=` (presente y vacía) SIEMPRE daba `''`, y
+     * `Storage::disk('')` SIEMPRE caía en el default de Laravel en vez de
+     * fallar.
+     *
+     * Esta función cierra las dos formas de «no configurado»: la cadena
+     * vacía, explícita acá, y el nombre que no tiene driver, que
+     * `Storage::disk()` ya rechazaba con `InvalidArgumentException` y que acá
+     * se envuelve en la excepción propia del módulo para no dejar escapar una
+     * excepción de Laravel donde el resto de los fallos de configuración usan
+     * clases del dominio.
+     *
+     * @throws DiscoEvidenciaNoConfigurado si el nombre está en blanco o no
+     *                                     resuelve a un disco configurado
+     */
+    private function resolverDisco(string $nombreDisco): Filesystem
+    {
+        if ($nombreDisco === '') {
+            throw new DiscoEvidenciaNoConfigurado(
+                'privacidad.disco_evidencia está en blanco y hay un documento que anonimizar '
+                .'necesita borrar. Declarar PRIVACIDAD_DISCO_EVIDENCIA con el disco donde este '
+                .'sistema guarda esos documentos antes de reintentar: sin eso, seguir con un disco '
+                .'por defecto arriesga anular la ruta sin haber borrado el archivo.',
+            );
+        }
+
+        try {
+            return Storage::disk($nombreDisco);
+        } catch (InvalidArgumentException $e) {
+            throw new DiscoEvidenciaNoConfigurado(
+                "privacidad.disco_evidencia nombra «{$nombreDisco}», que no tiene driver configurado ".
+                'en filesystems.disks. Corregir el nombre o agregar el disco antes de reintentar.',
+                previous: $e,
+            );
+        }
     }
 }

@@ -110,15 +110,19 @@ PRIVACIDAD_CONTACTO=privacidad@municipalidadgraneros.cl
 PRIVACIDAD_DELEGADO=
 ```
 
-`PRIVACIDAD_DISCO_EVIDENCIA` es **paso obligatorio de adopción**, no un ajuste
-opcional: tiene que nombrar el disco donde ESTE sistema guarda los documentos
-cuyas rutas le pasa al módulo (`Solicitudes::acoger($respuestaPath)` y
+`PRIVACIDAD_DISCO_EVIDENCIA` es **paso obligatorio de adopción**, sin default:
+tiene que nombrar el disco donde ESTE sistema guarda los documentos cuyas
+rutas le pasa al módulo (`Solicitudes::acoger($respuestaPath)` y
 `Consentimientos::otorgar(['evidencia_path' => …])`). El módulo nunca los
-escribió —solo los borra al anonimizar—, así que si el valor apunta a otro
-disco el barrido no encuentra nada, **no falla**, y la anonimización termina
-dejando el expediente y el consentimiento firmado vivos en disco. Se detecta
-mirando la constancia `retencion.constancia` de la corrida:
-`archivos_no_encontrados` alto con `archivos_suprimidos` en cero.
+escribió —solo los borra al anonimizar—. Dejarla en blanco o apuntada a un
+disco que no existe **hace fallar la anonimización** apenas encuentra un
+documento que borrar (`DiscoEvidenciaNoConfigurado`): es a propósito, para no
+repetir el defecto que tuvo este ejemplo hasta 2026-08-16, cuando la clave
+tenía un default ('local') y una declaración vacía o ausente caía ahí en
+silencio. Lo que SIGUE sin poder detectar el módulo por su cuenta es un
+nombre de disco que resuelve pero no es donde viven los documentos: ese caso
+no truena, y se ve mirando la constancia `retencion.constancia` de la
+corrida: `archivos_no_encontrados` alto con `archivos_suprimidos` en cero.
 
 ### Lo que cada sistema debe aportar
 
