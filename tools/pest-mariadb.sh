@@ -16,25 +16,45 @@
 #
 set -euo pipefail
 
-CONTENEDOR=muni-shared-mariadb-test
-PUERTO=${MUNI_MARIADB_PORT:-33061}
+# Nombre y puerto POR CORRIDA, y esto no es prolijidad: este repo lo editan
+# sesiones en paralelo. Con el nombre fijo que había antes, la segunda corrida
+# empezaba con un `docker rm -f` que le volaba la base a la primera EN PLENA
+# EJECUCIÓN —comprobado: dos corridas simultáneas del mismo subconjunto se
+# tumbaron mutuamente, las dos con salida 2 y fallos que no eran del código—, y
+# además chocaban por el puerto fijo. El sufijo es el PID, que el sistema
+# garantiza único entre procesos vivos.
+CONTENEDOR=${MUNI_MARIADB_CONTENEDOR:-muni-shared-mariadb-test-$$}
+# Puerto 0 = que lo elija el kernel entre los libres; se consulta después con
+# `docker port`. Se puede fijar con MUNI_MARIADB_PORT, pero fijarlo devuelve el
+# choque: es para depurar una corrida sola, no para el uso normal.
+PUERTO_PEDIDO=${MUNI_MARIADB_PORT:-0}
 IMAGEN=${MUNI_MARIADB_IMAGE:-mariadb:11}
 
 cd "$(dirname "$0")/.."
 
-# Un contenedor colgado de una corrida anterior tendría el esquema de esa
-# corrida: se tira y se levanta de nuevo, no se reutiliza.
+# Un contenedor colgado de una corrida anterior CON ESTE MISMO NOMBRE tendría el
+# esquema de esa corrida: se tira y se levanta de nuevo, no se reutiliza. Con el
+# nombre por PID esto solo puede alcanzar a un cadáver de un PID reciclado,
+# nunca a la corrida de otra sesión.
 docker rm -f "$CONTENEDOR" >/dev/null 2>&1 || true
 
 docker run --rm -d --name "$CONTENEDOR" \
     -e MARIADB_ROOT_PASSWORD=secret \
     -e MARIADB_DATABASE=prueba \
-    -p "$PUERTO":3306 "$IMAGEN" >/dev/null
+    -p "127.0.0.1:$PUERTO_PEDIDO:3306" "$IMAGEN" >/dev/null
 
 limpiar() { docker rm -f "$CONTENEDOR" >/dev/null 2>&1 || true; }
 trap limpiar EXIT
 
-echo "Esperando a $IMAGEN en el puerto $PUERTO…"
+# El puerto REAL, que con 0 lo asignó el kernel y solo lo sabe Docker.
+PUERTO=$(docker port "$CONTENEDOR" 3306/tcp | head -n1 | sed 's/.*://')
+
+if [ -z "$PUERTO" ]; then
+    echo "No se pudo averiguar el puerto publicado de $CONTENEDOR." >&2
+    exit 1
+fi
+
+echo "Esperando a $IMAGEN en el puerto $PUERTO (contenedor $CONTENEDOR)…"
 
 # Por TCP y contra la base `prueba`, NO con `mariadb-admin ping` a secas: durante
 # la inicialización el entrypoint levanta un servidor temporal que escucha solo
