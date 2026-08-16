@@ -91,6 +91,52 @@ it('al ejecutar desvincula la bitácora previa del titular y la propia entrada d
         ->and(EntradaBitacora::whereNotNull('titular_id')->count())->toBe(0);
 });
 
+it('las cantidades del barrido se publican una vez por corrida, no por titular', function () {
+    // Las cantidades por persona —cuántas filas, cuántos documentos— estampadas
+    // en el instante exacto de la anonimización acotan cada persona a un
+    // conjunto de filas huérfanas de 2 a 6, y con el orden de las constancias se
+    // resuelve el resto. Es el único de los tres canales de correlación
+    // conocidos que el módulo controla, así que se agrega por corrida: la suma
+    // sigue delatando el disco mal configurado sin decir de quién era cada fila.
+    $otra = PersonaDePrueba::create([
+        'nombre' => 'Ema Ríos',
+        'documento' => '33.333.333-3',
+        'diagnostico' => 'dato sensible de salud',
+        'tratamiento_iniciado_en' => now()->subYears(7),
+    ]);
+
+    $this->travelTo(now()->subMonths(2));
+    app(RegistroDeEvidencia::class)->registrar('solicitud.registrada', ['x' => 1], $this->vencida);
+    app(RegistroDeEvidencia::class)->registrar('solicitud.acogida', ['y' => 2], $this->vencida);
+    app(RegistroDeEvidencia::class)->registrar('solicitud.registrada', ['z' => 3], $otra);
+    $this->travelBack();
+
+    app(AplicarRetencion::class)->ejecutar(simulacion: false);
+
+    $corrida = EntradaBitacora::where('evento', 'retencion.constancia')->sole();
+
+    // Dos previas + su propia 'retencion.aplicada' para la primera; una previa +
+    // la suya para la segunda.
+    expect($corrida->datos)->toBe([
+        'titulares' => 2,
+        'filas' => 5,
+        'archivos_suprimidos' => 0,
+        'archivos_no_encontrados' => 0,
+    ])
+        // Sin usuario y sin titular, igual que la constancia por titular: una
+        // corrida disparada desde un panel con sesión abierta dejaría ahí el id
+        // de quien la lanzó, en el instante de la anonimización.
+        ->and($corrida->user_id)->toBeNull()
+        ->and($corrida->titular_id)->toBeNull()
+        ->and($corrida->titular_ref)->toBeNull();
+
+    // Y por titular queda el hecho, idéntico para los dos: se cortó el vínculo.
+    $porTitular = EntradaBitacora::where('evento', 'bitacora.desvinculada')->get();
+
+    expect($porTitular)->toHaveCount(2)
+        ->and($porTitular->pluck('datos')->all())->toBe([[], []]);
+});
+
 it('ignora finalidades sin plazo de retención', function () {
     $this->finalidad->update(['plazo_retencion_meses' => null]);
 

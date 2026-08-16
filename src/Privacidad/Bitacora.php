@@ -135,10 +135,20 @@ class Bitacora
 
     public function __construct(private readonly RegistroDeEvidencia $evidencia) {}
 
-    /** @return int cuántas filas del módulo quedaron desvinculadas, en todas sus tablas */
-    public function desvincular(Model $titular): int
+    /**
+     * Corta el vínculo de un titular con todas las tablas del módulo.
+     *
+     * Devuelve las cantidades en vez de publicarlas: son cantidades POR PERSONA
+     * y la constancia se escribe en el instante de la anonimización, así que
+     * publicarlas ahí es un canal de correlación (ver ResultadoDesvinculacion).
+     * Quien llama decide qué hacer con ellas; `AplicarRetencion` las agrega por
+     * corrida.
+     *
+     * @throws ArchivoNoSuprimido si el disco no confirmó borrar algún documento
+     */
+    public function desvincular(Model $titular): ResultadoDesvinculacion
     {
-        return DB::transaction(function () use ($titular): int {
+        return DB::transaction(function () use ($titular): ResultadoDesvinculacion {
             // Aleatorio puro, NO un ULID. Un ULID parece la elección natural
             // —ordenable, corto, sin colisiones— y fue la que se hizo primero,
             // pero sus 10 primeros caracteres SON la marca de tiempo en
@@ -273,38 +283,62 @@ class Bitacora
                 // titulares que NO se anonimizaron, que nadie suprime nunca, y
                 // cualquier copia de esos documentos fuera del disco
                 // configurado.
-                $ultima = (int) DB::table('privacidad_bitacora')->max('id');
-
-                // Los conteos de archivos son hecho auditable y además delatan
-                // una mala configuración: si `archivos_no_encontrados` sube
-                // mientras `archivos_suprimidos` queda en cero, el disco
-                // configurado en `privacidad.disco_evidencia` no es donde el
-                // sistema guarda los documentos, y se está anonimizando dejando
-                // expedientes vivos en otro lado.
-                $this->evidencia->registrar('bitacora.desvinculada', [
-                    'filas' => $afectadas,
-                    'archivos_suprimidos' => $suprimidos,
-                    'archivos_no_encontrados' => $noEncontrados,
-                ]);
-
-                // Y sin usuario. La constancia la escribe `registrar()`, que
-                // guarda Auth::id() sin preguntar; normalmente es null porque la
-                // retención corre por cron, pero un adoptante que ofrezca
-                // «eliminar mi cuenta» en su portal ciudadano la dispararía con
-                // el propio titular autenticado. Quedaría su id de usuario en la
-                // fila del instante exacto de la anonimización: el mismo camino
-                // que cierra la ventana de arriba, entrando por un entero.
+                // Sin cantidades, y esto es lo que cambió el 2026-08-15. Las
+                // cantidades por persona —cuántas filas, cuántos documentos—
+                // publicadas en el instante exacto de la anonimización acotan
+                // cada persona a un conjunto de 2 a 6 filas huérfanas, y con el
+                // orden de las constancias se termina de resolver. Ahora se
+                // devuelven a quien llamó y se agregan por corrida en
+                // `AplicarRetencion` (evento `retencion.constancia`), donde la
+                // suma sigue delatando la mala configuración que motivaba el
+                // conteo —`archivos_no_encontrados` alto con
+                // `archivos_suprimidos` en cero significa que
+                // `privacidad.disco_evidencia` no apunta a donde el sistema
+                // guarda los documentos— sin decir de quién era cada cual.
                 //
-                // Se acota por id y por evento para no tocar la evidencia de
-                // otra petición que esté escribiendo en el mismo segundo.
-                DB::table('privacidad_bitacora')
-                    ->where('id', '>', $ultima)
-                    ->where('evento', 'bitacora.desvinculada')
-                    ->update(['user_id' => null]);
+                // Lo que sí queda por titular es el HECHO: se cortó el vínculo,
+                // tal día y tal hora. Eso es lo que acredita la supresión ante
+                // la Agencia, es idéntico para todos —no distingue a nadie— y
+                // no se puede mover a la corrida sin dejar sin constancia al
+                // adoptante que llame a desvincular() directo desde un «eliminar
+                // mi cuenta» de su portal, que no pasa por retención.
+                $this->registrarConstancia('bitacora.desvinculada', []);
             }
 
-            return $afectadas;
+            return new ResultadoDesvinculacion($afectadas, $suprimidos, $noEncontrados);
         });
+    }
+
+    /**
+     * Deja una constancia del propio módulo, sin titular y sin usuario.
+     *
+     * Sin usuario a propósito: la evidencia la escribe `registrar()`, que guarda
+     * Auth::id() sin preguntar. Normalmente es null porque la retención corre
+     * por cron, pero un adoptante que ofrezca «eliminar mi cuenta» en su portal
+     * ciudadano la dispararía con el propio titular autenticado, y quedaría su
+     * id de usuario en la fila del instante exacto de la anonimización: el mismo
+     * camino que cierra la ventana de desvincular(), entrando por un entero.
+     * Vale igual para el agregado por corrida: una corrida con un solo titular
+     * lo delataría igual.
+     *
+     * Se acota por id y por evento para no tocar la evidencia de otra petición
+     * que esté escribiendo en el mismo segundo. Si el adoptante sustituyó
+     * `RegistroDeEvidencia` por su propia bitácora, el UPDATE no encuentra nada
+     * y no hace daño; es responsabilidad de esa implementación no guardar el
+     * usuario.
+     *
+     * @param  array<string, mixed>  $datos
+     */
+    public function registrarConstancia(string $evento, array $datos): void
+    {
+        $ultima = (int) DB::table('privacidad_bitacora')->max('id');
+
+        $this->evidencia->registrar($evento, $datos);
+
+        DB::table('privacidad_bitacora')
+            ->where('id', '>', $ultima)
+            ->where('evento', $evento)
+            ->update(['user_id' => null]);
     }
 
     /**

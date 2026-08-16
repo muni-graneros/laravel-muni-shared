@@ -29,34 +29,67 @@ class AplicarRetencion
     {
         $resumen = [];
 
+        // Las cantidades del barrido se acumulan acá y se publican UNA vez, al
+        // cierre. Por titular eran un canal de correlación: «se desvincularon 4
+        // filas y 1 documento», estampado en el instante exacto de la
+        // anonimización, acota esa persona a un conjunto de filas huérfanas.
+        // Sumadas por corrida siguen sirviendo para lo que servían —detectar que
+        // el disco configurado no es donde viven los documentos— sin decir de
+        // quién era cada fila.
+        //
+        // Lo que esto NO arregla, y hay que saberlo: en una corrida con un solo
+        // titular vencido el agregado ES el dato por persona. La reducción es
+        // real cuando la retención corre por lote, que es como corre por cron.
+        $totales = ['titulares' => 0, 'filas' => 0, 'archivos_suprimidos' => 0, 'archivos_no_encontrados' => 0];
+
         $finalidades = Finalidad::query()
             ->delSistema((string) config('privacidad.sistema'))
             ->where('activa', true)
             ->whereNotNull('plazo_retencion_meses')
             ->get();
 
-        foreach ($finalidades as $finalidad) {
-            $contados = 0;
+        try {
+            foreach ($finalidades as $finalidad) {
+                $contados = 0;
 
-            foreach ($this->resolvedor->vencidos($finalidad) as $titular) {
-                $contados++;
+                foreach ($this->resolvedor->vencidos($finalidad) as $titular) {
+                    $contados++;
 
-                if ($simulacion) {
-                    continue;
+                    if ($simulacion) {
+                        continue;
+                    }
+
+                    $barrido = $this->aplicarA($titular, $finalidad);
+
+                    if ($barrido === null) {
+                        continue;
+                    }
+
+                    $totales['titulares']++;
+                    $totales['filas'] += $barrido->filas;
+                    $totales['archivos_suprimidos'] += $barrido->archivosSuprimidos;
+                    $totales['archivos_no_encontrados'] += $barrido->archivosNoEncontrados;
                 }
 
-                $this->aplicarA($titular, $finalidad);
+                if ($contados > 0) {
+                    $resumen[] = ['finalidad' => (string) $finalidad->codigo, 'titulares' => $contados];
+                }
             }
-
-            if ($contados > 0) {
-                $resumen[] = ['finalidad' => (string) $finalidad->codigo, 'titulares' => $contados];
+        } finally {
+            // En `finally` porque cada titular va en su propia transacción: si
+            // el titular número siete revienta —un documento que el disco no
+            // pudo borrar, por ejemplo—, los seis anteriores ya están
+            // anonimizados y sin esto se quedarían sin ninguna constancia de
+            // cuánto se barrió. La excepción sigue subiendo al comando.
+            if ($totales['titulares'] > 0) {
+                $this->bitacora->registrarConstancia('retencion.constancia', $totales);
             }
         }
 
         return $resumen;
     }
 
-    private function aplicarA(TitularDeDatos $titular, Finalidad $finalidad): void
+    private function aplicarA(TitularDeDatos $titular, Finalidad $finalidad): ?ResultadoDesvinculacion
     {
         // El orden importa: primero se borra lo sensible, después se anonimiza.
         // Al revés, el registro anonimizado podría conservar el archivo sensible
@@ -71,7 +104,7 @@ class AplicarRetencion
         // load-bearing incluso con la transacción: si algo falla después de
         // purgar, el archivo ya no está aunque la fila vuelva a su estado
         // anterior.
-        DB::transaction(function () use ($titular, $finalidad): void {
+        return DB::transaction(function () use ($titular, $finalidad): ?ResultadoDesvinculacion {
             $titular->purgarDatosSensibles();
             $titular->anonimizar();
 
@@ -112,9 +145,11 @@ class AplicarRetencion
                 'plazo_meses' => $finalidad->plazo_retencion_meses,
             ], $titular instanceof Model ? $titular : null);
 
-            if ($titular instanceof Model) {
-                $this->bitacora->desvincular($titular);
-            }
+            // Un titular que no es Model no tiene morph con el que buscar sus
+            // filas: no hay barrido y no hay cantidades que agregar.
+            return $titular instanceof Model
+                ? $this->bitacora->desvincular($titular)
+                : null;
         });
     }
 }

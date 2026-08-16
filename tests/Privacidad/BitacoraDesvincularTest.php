@@ -32,9 +32,9 @@ beforeEach(function () {
 });
 
 it('corta el vínculo con el titular pero conserva las entradas', function () {
-    $desvinculadas = app(Bitacora::class)->desvincular($this->titular);
+    $barrido = app(Bitacora::class)->desvincular($this->titular);
 
-    expect($desvinculadas)->toBe(2)
+    expect($barrido->filas)->toBe(2)
         // Las tres siguen ahí, más la que registra la propia desvinculación.
         ->and(EntradaBitacora::count())->toBe(4);
 
@@ -102,19 +102,23 @@ it('lo escrito dentro de la propia anonimización queda huérfano pero sin refer
         ->and(EntradaBitacora::whereNotNull('titular_ref')->count())->toBe(2);
 });
 
-it('la constancia de la desvinculación no publica la referencia', function () {
-    // Se escribe en el instante de la anonimización: llevar ahí el ref sería
-    // publicar el instante y el identificador de grupo juntos, que es justo lo
-    // que la ventana evita.
-    app(Bitacora::class)->desvincular($this->titular);
+it('la constancia por titular no publica la referencia ni ninguna cantidad', function () {
+    // Se escribe en el instante de la anonimización, así que todo lo que lleve
+    // adentro queda pegado a ese instante. El ref sería la llave directa. Las
+    // cantidades por persona son la versión débil del mismo problema: «4 filas y
+    // 1 documento» acota esa persona a un conjunto de filas huérfanas, y con el
+    // orden de las constancias se termina de resolver. Van agregadas por corrida
+    // (ver RetencionTest); acá queda el hecho, que es idéntico para todos.
+    $barrido = app(Bitacora::class)->desvincular($this->titular);
 
     $constancia = EntradaBitacora::where('evento', 'bitacora.desvinculada')->sole();
 
-    expect($constancia->datos)->toBe([
-        'filas' => 2,
-        'archivos_suprimidos' => 0,
-        'archivos_no_encontrados' => 0,
-    ])->and($constancia->titular_ref)->toBeNull();
+    expect($constancia->datos)->toBe([])
+        ->and($constancia->titular_ref)->toBeNull()
+        ->and($constancia->titular_id)->toBeNull()
+        // Y las cantidades siguen existiendo, pero como retorno: quien llama
+        // decide qué publicar.
+        ->and($barrido->filas)->toBe(2);
 });
 
 it('deja constancia de la propia desvinculación', function () {
@@ -139,14 +143,12 @@ it('borra del disco los documentos referenciados, no solo la ruta', function () 
         ['evidencia_path' => 'consentimientos/11111111-1.pdf'],
     );
 
-    app(Bitacora::class)->desvincular($this->titular);
+    $barrido = app(Bitacora::class)->desvincular($this->titular);
 
     Storage::disk('local')->assertMissing('consentimientos/11111111-1.pdf');
 
-    $constancia = EntradaBitacora::where('evento', 'bitacora.desvinculada')->sole();
-
-    expect($constancia->datos['archivos_suprimidos'])->toBe(1)
-        ->and($constancia->datos['archivos_no_encontrados'])->toBe(0)
+    expect($barrido->archivosSuprimidos)->toBe(1)
+        ->and($barrido->archivosNoEncontrados)->toBe(0)
         ->and(Consentimiento::sole()->evidencia_path)->toBeNull();
 });
 
@@ -227,10 +229,8 @@ it('cuenta como no encontrado el archivo que ya no está, sin fallar', function 
         ['evidencia_path' => 'consentimientos/inexistente.pdf'],
     );
 
-    app(Bitacora::class)->desvincular($this->titular);
+    $barrido = app(Bitacora::class)->desvincular($this->titular);
 
-    $constancia = EntradaBitacora::where('evento', 'bitacora.desvinculada')->sole();
-
-    expect($constancia->datos['archivos_no_encontrados'])->toBe(1)
-        ->and($constancia->datos['archivos_suprimidos'])->toBe(0);
+    expect($barrido->archivosNoEncontrados)->toBe(1)
+        ->and($barrido->archivosSuprimidos)->toBe(0);
 });
