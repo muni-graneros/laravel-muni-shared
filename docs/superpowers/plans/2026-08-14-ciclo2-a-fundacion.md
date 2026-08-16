@@ -552,6 +552,16 @@ En `src/Privacidad/Modelos/Finalidad.php`:
     ];
 ```
 
+> **Corregido el 2026-08-15**: esta constante era una lista paralela contra la
+> que se hacía `array_intersect` sobre `categorias_datos`, que seguía siendo
+> un array de strings libres. Cualquier variante -mayúscula, sinónimo, typo-
+> quedaba tratada como no sensible en silencio; `discapacidad` nunca coincidía
+> con `salud`. Se reemplazó por el enum backed `CategoriaDato`, que hace el
+> catálogo total (rechaza lo no reconocido en vez de ignorarlo) y deriva la
+> sensibilidad con `esSensible()` en vez de una lista que podía desalinearse.
+> Ver `src/Privacidad/CategoriaDato.php` y el reporte en
+> `.superpowers/sdd/2026-08-14-ciclo2-a-fundacion/vocabulario-categorias-report.md`.
+
 Agregar al `$casts`: `'excepcion_dato_sensible' => ExcepcionDatoSensible::class`.
 
 Y como cuarta comprobación de `validarInvariantes()`:
