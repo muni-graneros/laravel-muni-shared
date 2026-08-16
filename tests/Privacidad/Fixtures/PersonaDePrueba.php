@@ -3,6 +3,7 @@
 namespace Muni\Shared\Tests\Privacidad\Fixtures;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Muni\Shared\Privacidad\Contratos\TitularDeDatos;
 
 /**
@@ -53,5 +54,12 @@ class PersonaDePrueba extends Model implements TitularDeDatos
         // Deliberadamente sin 'diagnostico': es el campo que un test debe
         // probar que se rechaza.
         return ['nombre', 'documento'];
+    }
+
+    public function fechaNacimientoTitular(): ?\DateTimeInterface
+    {
+        return $this->fecha_nacimiento
+            ? Carbon::parse($this->fecha_nacimiento)
+            : null;
     }
 }

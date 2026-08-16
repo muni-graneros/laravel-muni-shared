@@ -19,8 +19,17 @@ use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
 
 beforeEach(function () {
     config(['privacidad.sistema' => 'discapacidad']);
-    $this->titular = PersonaDePrueba::create(['nombre' => 'Rocío Paredes', 'documento' => '11.111.111-1']);
-    $this->otro = PersonaDePrueba::create(['nombre' => 'Otro Titular', 'documento' => '22.222.222-2']);
+    $this->titular = PersonaDePrueba::create([
+        'nombre' => 'Rocío Paredes',
+        'documento' => '11.111.111-1',
+        // Adultos: desde el régimen de NNA, otorgar() exige la edad acreditada.
+        'fecha_nacimiento' => now()->subYears(40)->toDateString(),
+    ]);
+    $this->otro = PersonaDePrueba::create([
+        'nombre' => 'Otro Titular',
+        'documento' => '22.222.222-2',
+        'fecha_nacimiento' => now()->subYears(35)->toDateString(),
+    ]);
 
     // La historia ocurre ANTES, como en la vida real. Una entrada escrita en el
     // mismo segundo que la desvinculación cae dentro de la ventana de

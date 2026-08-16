@@ -9,7 +9,12 @@ use Muni\Shared\Privacidad\Modelos\Finalidad;
 use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
 
 beforeEach(function () {
-    $this->titular = PersonaDePrueba::create(['nombre' => 'Rocío Paredes', 'documento' => '11.111.111-1']);
+    $this->titular = PersonaDePrueba::create([
+        'nombre' => 'Rocío Paredes',
+        'documento' => '11.111.111-1',
+        // Adulta: desde el régimen de NNA, otorgar() exige la edad acreditada.
+        'fecha_nacimiento' => now()->subYears(40)->toDateString(),
+    ]);
     $this->difusion = Finalidad::create([
         'sistema' => 'discapacidad',
         'codigo' => 'difusion',

@@ -10,7 +10,12 @@ use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
 
 beforeEach(function () {
     config(['privacidad.sistema' => 'discapacidad']);
-    $this->titular = PersonaDePrueba::create(['nombre' => 'Rocío Paredes', 'documento' => '11.111.111-1']);
+    $this->titular = PersonaDePrueba::create([
+        'nombre' => 'Rocío Paredes',
+        'documento' => '11.111.111-1',
+        // Adulta: desde el régimen de NNA, otorgar() exige la edad acreditada.
+        'fecha_nacimiento' => now()->subYears(40)->toDateString(),
+    ]);
     $this->finalidad = Finalidad::create([
         'sistema' => 'discapacidad', 'codigo' => 'difusion', 'nombre' => 'Difusión',
         'base_licitud' => BaseLicitud::Consentimiento, 'es_accesoria' => true,

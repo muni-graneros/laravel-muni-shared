@@ -127,6 +127,11 @@ beforeEach(function () {
         'documento' => '11.111.111-1',
         'diagnostico' => 'dato sensible de salud',
         'tratamiento_iniciado_en' => now()->subYears(6),
+        // Adulta: desde el régimen de NNA, otorgar() exige la edad acreditada.
+        // La fecha vive en `personas_de_prueba`, tabla del sistema adoptante:
+        // no la barre este módulo, y la anonimización de la persona sigue
+        // siendo responsabilidad de su propio anonimizar().
+        'fecha_nacimiento' => now()->subYears(40)->toDateString(),
     ]);
 
     // Control: una persona vigente, con la misma historia, que no debe perder
@@ -135,6 +140,7 @@ beforeEach(function () {
         'nombre' => 'Otro Titular',
         'documento' => '22.222.222-2',
         'tratamiento_iniciado_en' => now(),
+        'fecha_nacimiento' => now()->subYears(35)->toDateString(),
     ]);
 
     $this->finalidad = Finalidad::create([

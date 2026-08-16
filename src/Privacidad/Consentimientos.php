@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
+use Muni\Shared\Privacidad\Contratos\TitularDeDatos;
 use Muni\Shared\Privacidad\Modelos\Consentimiento;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
 
@@ -19,6 +20,7 @@ class Consentimientos
     public function __construct(
         private readonly RegistroDeEvidencia $evidencia,
         private readonly Textos $textos,
+        private readonly Edades $edades,
     ) {}
 
     /** @param array<string, mixed> $opciones */
@@ -35,6 +37,14 @@ class Consentimientos
             );
         }
 
+        // Se resuelve una sola vez, antes de la comprobación de edad, porque la
+        // comprobación y la fila tienen que mirar exactamente el mismo valor: si
+        // el chequeo leyera $opciones en crudo y la fila aplicara el default,
+        // omitir la opción sería el camino por el que un menor consiente solo.
+        $otorgadoPor = $this->solicitanteDe($opciones);
+
+        $this->exigirRegimenDeNna($titular, $finalidad, $otorgadoPor);
+
         // La transacción sigue existiendo por la razón 2, no por la 1: si el registro
         // de evidencia falla después de crear la fila, todo se revierte, porque un
         // consentimiento sin evidencia contradice el propósito del módulo. Quien
@@ -42,7 +52,7 @@ class Consentimientos
         // índice único sobre `vigente_clave` (ver la migración), no el orden de
         // llamadas: dos otorgar() concurrentes que ambos intenten insertar la misma
         // clave chocan en la base de datos, no en la aplicación.
-        return DB::transaction(function () use ($titular, $finalidad, $medio, $opciones) {
+        return DB::transaction(function () use ($titular, $finalidad, $medio, $opciones, $otorgadoPor) {
             // Si había uno vigente, se cierra primero.
             $this->revocar($titular, $finalidad);
 
@@ -67,7 +77,7 @@ class Consentimientos
                 // anonimización conserva por ser categórica, y esa promesa solo
                 // se sostiene si la columna no puede recibir el nombre del
                 // representante (ver Solicitante).
-                'otorgado_por' => $opciones['otorgado_por'] ?? Solicitante::Titular,
+                'otorgado_por' => $otorgadoPor,
                 'user_id' => Auth::id(),
                 'ip_hash' => isset($opciones['ip']) ? hash('sha256', (string) $opciones['ip']) : null,
             ]);
@@ -110,6 +120,70 @@ class Consentimientos
             ->where('finalidad_id', $finalidad->getKey())
             ->vigentes()
             ->exists();
+    }
+
+    /**
+     * Quién otorga, resuelto a enum antes de que nadie decida nada con él.
+     *
+     * La columna está casteada, así que un adoptante puede pasar el string y la
+     * fila se crea igual; si el régimen de NNA comparara contra la instancia del
+     * enum, ese camino legítimo quedaría rechazado por escribirse distinto.
+     *
+     * @param  array<string, mixed>  $opciones
+     */
+    private function solicitanteDe(array $opciones): Solicitante
+    {
+        $valor = $opciones['otorgado_por'] ?? Solicitante::Titular;
+
+        // Un valor que no sea un caso del enum revienta acá con ValueError, que
+        // es lo mismo que hacía el cast al crear la fila, solo que antes.
+        return $valor instanceof Solicitante ? $valor : Solicitante::from((string) $valor);
+    }
+
+    /**
+     * Régimen reforzado de niños, niñas y adolescentes.
+     *
+     * Va antes de la transacción porque no toca nada: rechaza o deja pasar.
+     *
+     * Solo se aplica a quien implementa `TitularDeDatos`. La firma de otorgar()
+     * admite cualquier `Model`, y a quien no firmó el contrato no se le puede
+     * preguntar la fecha de nacimiento ni exigir que la tenga.
+     */
+    private function exigirRegimenDeNna(Model $titular, Finalidad $finalidad, Solicitante $otorgadoPor): void
+    {
+        if (! $titular instanceof TitularDeDatos) {
+            return;
+        }
+
+        $esNNA = $this->edades->esNNA($titular);
+
+        // null es "no se sabe", no "es adulto". Se rechaza acá y no más abajo
+        // porque sin la edad no se puede evaluar ninguna de las dos reglas que
+        // siguen: ni si la finalidad lo admite, ni quién tiene que firmar.
+        if ($esNNA === null) {
+            throw new EdadNoAcreditada(
+                'No se puede pedir consentimiento sin saber si el titular es mayor de edad: '
+                .'la edad no está acreditada en este sistema.',
+            );
+        }
+
+        if (! $esNNA) {
+            return;
+        }
+
+        if (! $finalidad->admite_nna) {
+            throw new FinalidadInvalida(
+                "La finalidad «{$finalidad->codigo}» no admite el tratamiento de menores de edad.",
+            );
+        }
+
+        // Apoderado tampoco sirve, y no es un olvido: un menor no puede otorgar
+        // mandato, así que un apoderado suyo no existe jurídicamente.
+        if ($otorgadoPor !== Solicitante::RepresentanteLegal) {
+            throw new EdadNoAcreditada(
+                'El consentimiento de un menor de edad lo otorga su representante legal, no él mismo.',
+            );
+        }
     }
 
     /**

@@ -13,6 +13,9 @@ return new class extends Migration
             $table->string('nombre');
             $table->string('documento')->nullable();
             $table->string('diagnostico')->nullable();
+            // Nullable a propósito: el fixture tiene que poder representar el
+            // caso "edad no acreditada", que es el estado que el módulo rechaza.
+            $table->date('fecha_nacimiento')->nullable();
             $table->timestamp('tratamiento_iniciado_en')->nullable();
             $table->timestamps();
         });

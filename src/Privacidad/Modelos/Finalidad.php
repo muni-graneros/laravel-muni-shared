@@ -12,6 +12,7 @@ use Muni\Shared\Privacidad\FinalidadInvalida;
 
 /**
  * @property BaseLicitud $base_licitud
+ * @property bool $admite_nna
  * @property ExcepcionDatoSensible|null $excepcion_dato_sensible
  * @property array<int, CategoriaDato>|null $categorias_datos
  * @property array<int, string>|null $destinatarios
@@ -22,10 +23,25 @@ class Finalidad extends Model
 
     protected $guarded = [];
 
+    /**
+     * El default de la columna no basta: Eloquent no relee la fila después de
+     * insertarla, así que un `Finalidad::create()` que no mencione `admite_nna`
+     * deja el atributo en null en memoria, y null es falsy. El régimen de NNA
+     * leería "esta finalidad no admite menores" en una finalidad recién creada
+     * que sí los admite. El default vive en los dos lados a propósito: en la
+     * migración para las filas que ya existen, acá para la instancia en memoria.
+     *
+     * @var array<string, mixed>
+     */
+    protected $attributes = [
+        'admite_nna' => true,
+    ];
+
     protected $casts = [
         'base_licitud' => BaseLicitud::class,
         'excepcion_dato_sensible' => ExcepcionDatoSensible::class,
         'es_accesoria' => 'boolean',
+        'admite_nna' => 'boolean',
         'activa' => 'boolean',
         'plazo_retencion_meses' => 'integer',
         'categorias_datos' => CategoriasDatoCast::class,
