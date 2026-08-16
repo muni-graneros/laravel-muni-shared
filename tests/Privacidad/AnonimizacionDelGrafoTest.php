@@ -366,16 +366,34 @@ it('ninguna columna de una tabla barrida conserva un identificador del titular',
     expect($buscar())->toBe([]);
 });
 
-it('ninguna fila con referencia lleva una fecha del instante de la anonimización', function () {
-    // El ataque que esto cierra, en tres pasos y sin ningún join exótico:
-    // se buscan las personas anonimizadas por su marca («ANONIMIZADO»), se lee
-    // su `updated_at` —congelado, porque nadie vuelve a escribir esa fila—, y
-    // se busca la fila del módulo de ese mismo segundo. Si esa fila lleva el
-    // titular_ref, ahí termina el anonimato: con el ref se leen todas las demás
-    // filas huérfanas de la persona, en las cuatro tablas.
-    //
+it('el identificador de grupo no viaja junto al instante de la anonimización', function () {
+    // Lo que esta prueba acredita, y solo esto: el ref —el único identificador
+    // que el módulo publica y que agrupa filas huérfanas— nunca aparece en una
+    // fila fechada en el instante de la anonimización. Esa combinación sería
+    // llave directa: se buscan las personas anonimizadas por su marca
+    // («ANONIMIZADO»), se lee su `updated_at` —congelado, porque nadie vuelve a
+    // escribir esa fila—, se cae en la fila del módulo de ese mismo segundo y
+    // con su ref se leen todas las demás filas huérfanas, en las cuatro tablas.
     // Por eso el ref solo puede vivir en filas cuyas fechas son hechos de
     // negocio corrientes, anteriores a la anonimización.
+    //
+    // Lo que esta prueba NO acredita, y ninguna prueba de este módulo puede:
+    // que el conjunto de filas huérfanas deje de ser atribuible a una persona.
+    // Sin tocar el ref quedan dos rutas, ambas con 12 de 12 en el review
+    // independiente (40 vecinos, 12 anonimizados en la misma corrida):
+    //
+    //   1. Fechas de negocio: `personas.created_at` sobrevive —es del adoptante
+    //      y nadie la anula— y se empareja por vecino más cercano con la fecha
+    //      de negocio más antigua del grupo huérfano (`entregado_en`,
+    //      `otorgado_en`, `ocurrido_en`), que sobrevive por ser el hecho
+    //      auditable. Aguanta 72 h de ruido.
+    //   2. Ids de fila: los grupos huérfanos ordenados por su
+    //      `privacidad_bitacora.id` mínimo siguen el mismo orden que las
+    //      personas anonimizadas ordenadas por `id`, porque el módulo escribe
+    //      siempre después de que la persona existe.
+    //
+    // Cerrar cualquiera de las dos exige destruir el hecho auditable. Es
+    // residuo declarado en el spec de pendientes (5-ter), materia de EIPD.
     $anonimizacion = now()->startOfSecond();
 
     app(AplicarRetencion::class)->ejecutar(simulacion: false);

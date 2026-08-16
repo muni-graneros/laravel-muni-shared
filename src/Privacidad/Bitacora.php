@@ -229,9 +229,39 @@ class Bitacora
                 // para depurar. Esta fila se escribe en el instante exacto de la
                 // anonimización: publicar acá el ref sería exactamente lo que
                 // evita la ventana de arriba —el instante y el identificador de
-                // grupo, juntos y en texto plano—. Queda el conteo, que es el
-                // hecho auditable («se desvincularon N filas»); a qué caso
-                // pertenecían no lo dice nadie, y ese es el punto.
+                // grupo, juntos y en texto plano—.
+                //
+                // Lo que se consigue con eso es UNA cosa, y conviene decirla sin
+                // adornos porque tres rondas seguidas dijeron de más: el módulo
+                // no publica ningún identificador que agrupe las filas
+                // huérfanas. Ni el ref, ni un hash del titular, ni una marca de
+                // tiempo ordenable.
+                //
+                // Lo que NO se consigue —y este barrido no puede— es impedir que
+                // se atribuya un conjunto de filas huérfanas a un `personas.id`
+                // del sistema adoptante. Quedan abiertas dos rutas que ni
+                // siquiera miran el ref; un review independiente reconstruyó
+                // persona → conjunto huérfano 12 de 12 con cada una, sobre 40
+                // vecinos con 12 anonimizados en la misma corrida:
+                //
+                //   1. Fechas de negocio. `personas.created_at` sobrevive —es de
+                //      la tabla del adoptante, este barrido no la toca y
+                //      anonimizar() tampoco la anula— y se empareja por vecino
+                //      más cercano con la fecha de negocio más antigua de cada
+                //      grupo huérfano (`entregado_en`, `otorgado_en`,
+                //      `ocurrido_en`), que sobreviven porque SON el hecho
+                //      auditable. Aguanta 72 h de ruido entre una y otra.
+                //   2. Ids de fila, sin ninguna fecha: ordenar los grupos
+                //      huérfanos por su `privacidad_bitacora.id` más bajo y las
+                //      personas anonimizadas por `id` da el mismo orden, porque
+                //      el módulo siempre escribe después de que la persona
+                //      existe.
+                //
+                // Ninguna de las dos se cierra sin destruir el valor probatorio
+                // por el que este registro existe, y en este ecosistema ese
+                // `personas.id` resuelve a una identidad real en el maestro de
+                // personas federado. Es residuo declarado, no defecto pendiente:
+                // va en la EIPD (ver el pendiente 5-ter del spec de pendientes).
                 //
                 // El alcance exacto, para que nadie lea de más: se cortan los
                 // punteros al titular, se suprimen las columnas de texto libre,

@@ -95,6 +95,18 @@ class AplicarRetencion
             // hace falta hacer nada acá, pero sí saberlo antes de mover esta
             // llamada o de agregar otra evidencia con titular en esta
             // transacción.
+            //
+            // El alcance de esa ventana, dicho con precisión para no repetir el
+            // error de venderla como cierre: consigue que el módulo no publique
+            // ningún identificador que agrupe las filas huérfanas de una
+            // persona. NO consigue que el conjunto huérfano deje de ser
+            // atribuible a un `personas.id`: las fechas de negocio que
+            // sobreviven como hecho auditable se emparejan con
+            // `personas.created_at` —que esta transacción no toca—, y el orden
+            // de los ids de fila reproduce el orden de las personas
+            // anonimizadas. Las dos rutas reconstruyeron 12 de 12 en el review
+            // independiente. Están descritas en Bitacora::desvincular() y en el
+            // pendiente 5-ter del spec, que es lo que la EIPD tiene que evaluar.
             $this->evidencia->registrar('retencion.aplicada', [
                 'finalidad' => $finalidad->codigo,
                 'plazo_meses' => $finalidad->plazo_retencion_meses,
