@@ -19,3 +19,39 @@ jobs:
         run: ./vendor/bin/pint --test
       - name: Pest
         run: ./vendor/bin/pest
+
+  # La misma suite contra el motor de producción del ecosistema.
+  #
+  # No es redundante con el job de arriba: la corrida en SQLite estuvo verde
+  # mientras `Bitacora::desvincular()` fallaba SIEMPRE en MariaDB —la retención
+  # entera caída en producción— porque Laravel compila `cast(? as json)` para el
+  # UPDATE de una ruta JSON y MariaDB no soporta `CAST AS JSON`. La diferencia de
+  # motor es la que ve esa clase de defecto; ninguna revisión de código la vio.
+  test-mariadb:
+    name: Pest sobre MariaDB
+    runs-on: ubuntu-latest
+    services:
+      mariadb:
+        image: mariadb:11
+        env:
+          MARIADB_ROOT_PASSWORD: secret
+          MARIADB_DATABASE: prueba
+        ports:
+          - 33061:3306
+        options: >-
+          --health-cmd="mariadb-admin ping -h127.0.0.1 --protocol=tcp -uroot -psecret"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          coverage: none
+      - run: composer install --no-progress --prefer-dist
+      - name: Pest (MariaDB)
+        env:
+          MUNI_MARIADB_HOST: 127.0.0.1
+          MUNI_MARIADB_PORT: 33061
+        run: ./vendor/bin/pest

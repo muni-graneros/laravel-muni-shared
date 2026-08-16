@@ -39,6 +39,14 @@
             "Muni\\Shared\\Tests\\": "tests/"
         }
     },
+    "scripts": {
+        "test": "pest",
+        "test:mariadb": "tools/pest-mariadb.sh"
+    },
+    "scripts-descriptions": {
+        "test": "Suite completa en SQLite en memoria.",
+        "test:mariadb": "La misma suite contra un MariaDB desechable. OBLIGATORIO antes de publicar una versión: la producción del ecosistema es MariaDB y la suite en SQLite ya escondió un defecto crítico."
+    },
     "extra": {
         "laravel": {
             "providers": [

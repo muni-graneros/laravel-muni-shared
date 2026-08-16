@@ -65,6 +65,24 @@ composer install
 ./vendor/bin/pest
 ```
 
+### Antes de publicar una versión: correr la suite en MariaDB
+
+```bash
+composer test:mariadb      # levanta un mariadb:11 desechable y lo borra al salir
+```
+
+La suite corre en SQLite en memoria y la producción del ecosistema corre en
+MariaDB. Esa diferencia no es teórica: `Bitacora::desvincular()` —la
+anonimización, o sea la retención completa— falló **siempre** en MariaDB durante
+cuatro rondas de trabajo con la suite en verde, porque Laravel compila
+`cast(? as json)` para el UPDATE de una ruta JSON y MariaDB no soporta
+`CAST AS JSON`. Lo vio la primera corrida contra el motor real, no las
+revisiones de código.
+
+Lo mismo corre en CI (job `Pest sobre MariaDB`). Correrlo local sigue siendo el
+paso obligatorio antes de etiquetar: **si la CI del repo está caída por
+facturación, este comando es la única corrida que existe.**
+
 ## Módulo Privacidad (Ley 21.719)
 
 Cubre el registro de actividades de tratamiento, el consentimiento por
