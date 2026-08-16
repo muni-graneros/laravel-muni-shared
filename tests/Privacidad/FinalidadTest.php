@@ -1,6 +1,7 @@
 <?php
 
 use Muni\Shared\Privacidad\BaseLicitud;
+use Muni\Shared\Privacidad\CategoriaDato;
 use Muni\Shared\Privacidad\ExcepcionDatoSensible;
 use Muni\Shared\Privacidad\FinalidadInvalida;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
@@ -16,13 +17,13 @@ it('guarda una finalidad fundada en función legal con su norma habilitante', fu
         // una categoría prohibida: la base de licitud general no alcanza.
         'excepcion_dato_sensible' => ExcepcionDatoSensible::FinesEstatalesHabilitadosPorLey,
         'es_accesoria' => false,
-        'categorias_datos' => ['identificacion', 'salud'],
+        'categorias_datos' => [CategoriaDato::Identificacion, CategoriaDato::Salud],
         'destinatarios' => ['maestro_personas'],
     ]);
 
     expect($finalidad->exists)->toBeTrue()
         ->and($finalidad->base_licitud)->toBe(BaseLicitud::FuncionLegal)
-        ->and($finalidad->categorias_datos)->toBe(['identificacion', 'salud']);
+        ->and($finalidad->categorias_datos)->toBe([CategoriaDato::Identificacion, CategoriaDato::Salud]);
 });
 
 it('rechaza una finalidad sin base de licitud en vez de reventar con un error de PHP', function () {

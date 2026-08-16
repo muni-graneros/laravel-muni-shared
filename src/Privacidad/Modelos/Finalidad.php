@@ -5,30 +5,19 @@ namespace Muni\Shared\Privacidad\Modelos;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Muni\Shared\Privacidad\BaseLicitud;
+use Muni\Shared\Privacidad\CategoriaDato;
+use Muni\Shared\Privacidad\CategoriasDatoCast;
 use Muni\Shared\Privacidad\ExcepcionDatoSensible;
 use Muni\Shared\Privacidad\FinalidadInvalida;
 
 /**
  * @property BaseLicitud $base_licitud
  * @property ExcepcionDatoSensible|null $excepcion_dato_sensible
- * @property array<int, string>|null $categorias_datos
+ * @property array<int, CategoriaDato>|null $categorias_datos
  * @property array<int, string>|null $destinatarios
  */
 class Finalidad extends Model
 {
-    /**
-     * Categorías que la ley trata como sensibles.
-     *
-     * `socioeconomico` está acá porque la ley chilena la incluye explícitamente,
-     * a diferencia del RGPD: copiar un catálogo europeo dejaría fuera justo la
-     * categoría que más aparece en un municipio (fichas sociales, ayudas,
-     * subsidios).
-     */
-    public const CATEGORIAS_SENSIBLES = [
-        'salud', 'biometricos', 'perfil_biologico', 'origen_etnico',
-        'socioeconomico', 'vida_sexual', 'creencias', 'afiliacion',
-    ];
-
     protected $table = 'privacidad_finalidades';
 
     protected $guarded = [];
@@ -39,7 +28,7 @@ class Finalidad extends Model
         'es_accesoria' => 'boolean',
         'activa' => 'boolean',
         'plazo_retencion_meses' => 'integer',
-        'categorias_datos' => 'array',
+        'categorias_datos' => CategoriasDatoCast::class,
         'destinatarios' => 'array',
     ];
 
@@ -75,11 +64,19 @@ class Finalidad extends Model
             );
         }
 
-        $sensibles = array_values(array_intersect($this->categorias_datos ?? [], self::CATEGORIAS_SENSIBLES));
+        // La sensibilidad se deriva del enum, no de una lista paralela: no hay
+        // forma de que `categorias_datos` contenga un string no reconocido
+        // acá, porque el cast ya lo rechazó al asignarlo.
+        $sensibles = array_values(array_filter(
+            $this->categorias_datos ?? [],
+            fn (CategoriaDato $categoria): bool => $categoria->esSensible(),
+        ));
 
         if ($sensibles !== [] && $this->excepcion_dato_sensible === null) {
+            $nombres = implode(', ', array_map(fn (CategoriaDato $c): string => $c->value, $sensibles));
+
             throw new FinalidadInvalida(
-                "La finalidad «{$this->codigo}» trata datos sensibles (".implode(', ', $sensibles).') '
+                "La finalidad «{$this->codigo}» trata datos sensibles ({$nombres}) "
                 .'pero no declara la causal que lo habilita. La base de licitud general no basta: '
                 .'la ley prohíbe tratarlos salvo causales tasadas.',
             );
