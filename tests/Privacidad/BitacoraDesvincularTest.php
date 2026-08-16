@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Muni\Shared\Privacidad\ArchivoNoSuprimido;
@@ -11,6 +12,9 @@ use Muni\Shared\Privacidad\MedioDeConsentimiento;
 use Muni\Shared\Privacidad\Modelos\Consentimiento;
 use Muni\Shared\Privacidad\Modelos\EntradaBitacora;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
+use Muni\Shared\Privacidad\ResultadoVerificacion;
+use Muni\Shared\Privacidad\Solicitudes;
+use Muni\Shared\Privacidad\TipoDeSolicitud;
 use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
 
 beforeEach(function () {
@@ -233,4 +237,75 @@ it('cuenta como no encontrado el archivo que ya no está, sin fallar', function 
 
     expect($barrido->archivosNoEncontrados)->toBe(1)
         ->and($barrido->archivosSuprimidos)->toBe(0);
+});
+
+it('la evidencia de identidad se vacía y el método sobrevive, en cualquier motor', function () {
+    // Regresión del defecto que dejó la retención caída en producción con la
+    // suite en verde: `'verificacion_identidad->evidencia' => []` dentro de un
+    // update() compila `json_set(…, cast(? as json))`, y MariaDB no soporta
+    // `CAST(x AS JSON)`. Este test vale por lo que afirma —qué queda escrito—
+    // pero sobre todo por dónde se corre: contra MariaDB fallaba con un 1064.
+    $solicitud = app(Solicitudes::class)->registrar(
+        $this->titular,
+        TipoDeSolicitud::Acceso,
+        'Quiero mi ficha',
+        new ResultadoVerificacion(true, 'cedula_presencial', ['run' => '11.111.111-1']),
+    );
+
+    app(Bitacora::class)->desvincular($this->titular);
+
+    $fila = DB::table('privacidad_solicitudes')->where('id', $solicitud->getKey())->sole();
+    $verificacion = json_decode((string) $fila->verificacion_identidad, true);
+
+    expect($verificacion['metodo'])->toBe('cedula_presencial')
+        ->and($verificacion['evidencia'])->toBe([])
+        // Y no queda rastro del RUN en ninguna parte de la columna, que es lo
+        // que se estaba comprando con toda esta maniobra.
+        ->and((string) $fila->verificacion_identidad)->not->toContain('11.111.111-1');
+});
+
+it('la evidencia se vacía también en las claves que nadie declaró', function () {
+    // El adoptante escribe la evidencia: `ResultadoVerificacion` la recibe como
+    // array libre y ahí puede venir cualquier cosa, anidada. Se vacía la clave
+    // entera, no se recorre buscando lo que parezca un RUT.
+    $solicitud = app(Solicitudes::class)->registrar(
+        $this->titular,
+        TipoDeSolicitud::Acceso,
+        'Quiero mi ficha',
+        new ResultadoVerificacion(true, 'clave_unica', [
+            'run' => '11.111.111-1',
+            'respuesta' => ['nombre' => 'Rocío Paredes', 'direccion' => 'Los Aromos 123'],
+        ]),
+    );
+
+    app(Bitacora::class)->desvincular($this->titular);
+
+    $fila = DB::table('privacidad_solicitudes')->where('id', $solicitud->getKey())->sole();
+
+    expect(json_decode((string) $fila->verificacion_identidad, true))
+        ->toBe(['metodo' => 'clave_unica', 'evidencia' => []]);
+});
+
+it('una verificación ilegible se reescribe purgada en vez de quedar intacta', function () {
+    // El módulo no es el único que escribe esa columna: una migración de datos
+    // de un adoptante puede dejar algo que no es JSON. Equivocarse conservando
+    // deja el RUN vivo en una fila ya huérfana; se reescribe.
+    $solicitud = app(Solicitudes::class)->registrar(
+        $this->titular,
+        TipoDeSolicitud::Acceso,
+        'Quiero mi ficha',
+        new ResultadoVerificacion(true, 'cedula_presencial', ['run' => '11.111.111-1']),
+    );
+
+    // Por query builder, sin pasar por el cast del modelo: es la única forma de
+    // dejar la columna con contenido que el módulo no habría escrito.
+    DB::table('privacidad_solicitudes')
+        ->where('id', $solicitud->getKey())
+        ->update(['verificacion_identidad' => '"11.111.111-1"']);
+
+    app(Bitacora::class)->desvincular($this->titular);
+
+    $fila = DB::table('privacidad_solicitudes')->where('id', $solicitud->getKey())->sole();
+
+    expect(json_decode((string) $fila->verificacion_identidad, true))->toBe(['evidencia' => []]);
 });

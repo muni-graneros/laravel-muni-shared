@@ -4,6 +4,7 @@ namespace Muni\Shared\Privacidad;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder;
+use Illuminate\Support\Arr;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
@@ -95,6 +96,10 @@ class Bitacora
             // Se conserva `metodo` («cedula_presencial») porque acredita CÓMO se
             // verificó la identidad, que es un hecho auditable y no identifica a
             // nadie; se vacía `evidencia`, que es donde va el RUN en claro.
+            //
+            // Esta clave NO viaja al UPDATE: la resuelve purgarRutasJson() en
+            // PHP, porque el `json_set(…, cast(? as json))` que compila Laravel
+            // no existe en MariaDB. Ver el docblock de ese método.
             'verificacion_identidad->evidencia' => [],
             // La respuesta escrita al titular, con su misma exposición.
             'fundamento_resolucion' => null,
@@ -210,6 +215,20 @@ class Bitacora
                     ->where('titular_type', $titular->getMorphClass())
                     ->where('titular_id', $titular->getKey());
 
+                // Las claves con ruta JSON salen del UPDATE y se resuelven en
+                // PHP (ver purgarRutasJson): mandarlas acá cae con un 1064 en
+                // MariaDB. Se purgan ANTES de los dos UPDATE porque después el
+                // titular_id ya es null y no habría por dónde encontrar la fila.
+                $rutasJson = array_filter(
+                    $aSuprimir,
+                    fn (string $clave) => str_contains($clave, '->'),
+                    ARRAY_FILTER_USE_KEY,
+                );
+
+                $aSuprimir = array_diff_key($aSuprimir, $rutasJson);
+
+                $this->purgarRutasJson($tabla, $delTitular, $rutasJson);
+
                 // Antes de anular las rutas, borrar los archivos: después del
                 // UPDATE ya no se sabe cuáles eran. Va dentro de la transacción
                 // por el mismo criterio que purgarDatosSensibles() en
@@ -316,6 +335,70 @@ class Bitacora
 
             return new ResultadoDesvinculacion($afectadas, $suprimidos, $noEncontrados);
         });
+    }
+
+    /**
+     * Aplica en PHP las supresiones que apuntan a una clave dentro de un JSON.
+     *
+     * Existe por un defecto que estuvo vivo y verde: `'verificacion_identidad->
+     * evidencia' => []` dentro de un `update()` hace que la gramática de Laravel
+     * compile `json_set(col, '$."evidencia"', cast(? as json))`, y **MariaDB no
+     * soporta `CAST(x AS JSON)`** —es sintaxis de MySQL; en MariaDB `JSON` es un
+     * alias de LONGTEXT, no un tipo casteable—, así que el motor devuelve un
+     * 1064 al preparar la sentencia. `MariaDbGrammar` hereda
+     * `compileJsonUpdateColumn` de `MySqlGrammar` sin corregirlo. Resultado: la
+     * retención entera caída en producción con la suite del paquete en verde,
+     * porque la suite corría en SQLite.
+     *
+     * Se leen las filas y se reescribe la columna completa desde PHP en vez de
+     * emitir una expresión distinta por driver. Cuesta N sentencias por titular
+     * en vez de una, y se acepta: la retención procesa de a una persona, y —lo
+     * que de verdad importa— la semántica de qué sobrevive a la purga queda
+     * escrita en PHP, donde se prueba igual en los dos motores. Una expresión
+     * condicionada al driver es exactamente la forma en que nació este defecto.
+     *
+     * La clave se conserva en TABLAS con su ruta («columna->clave») porque es la
+     * declaración que leen las guardias de deriva de AnonimizacionDelGrafoTest:
+     * sacarla de ahí dejaría `verificacion_identidad` sin clasificar.
+     *
+     * Si el documento no se puede leer como array, se reescribe con las claves
+     * purgadas y nada más: se pierde el `metodo`, que no identifica a nadie, y
+     * no se conserva un contenido que nadie pudo inspeccionar. La columna es NOT
+     * NULL, así que dejarla intacta no es opción.
+     *
+     * @param  callable(): Builder  $filas
+     * @param  array<string, mixed>  $rutas  ['columna->clave' => valor nuevo]
+     */
+    private function purgarRutasJson(string $tabla, callable $filas, array $rutas): void
+    {
+        if ($rutas === []) {
+            return;
+        }
+
+        /** @var array<string, array<string, mixed>> $porColumna */
+        $porColumna = [];
+
+        foreach ($rutas as $ruta => $valor) {
+            [$columna, $clave] = explode('->', $ruta, 2);
+            $porColumna[$columna][$clave] = $valor;
+        }
+
+        foreach ($porColumna as $columna => $claves) {
+            foreach ($filas()->select('id', $columna)->get() as $fila) {
+                $documento = json_decode((string) $fila->{$columna}, true);
+                $documento = is_array($documento) ? $documento : [];
+
+                foreach ($claves as $clave => $valor) {
+                    // La ruta puede tener más de un nivel («a->b->c»); Arr::set
+                    // la resuelve con la notación de punto.
+                    Arr::set($documento, str_replace('->', '.', $clave), $valor);
+                }
+
+                DB::table($tabla)
+                    ->where('id', $fila->id)
+                    ->update([$columna => json_encode($documento)]);
+            }
+        }
     }
 
     /**
