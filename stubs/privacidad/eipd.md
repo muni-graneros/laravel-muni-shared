@@ -36,7 +36,17 @@ Vienen con el paquete instalado y migrado. Se dan por presentes una vez que
 - Registro de brechas con doble hito de notificación independiente —
   Agencia y titulares (`privacidad_brechas`)
 - Separación de funciones entre registrar y resolver una solicitud, auditada en
-  `user_registro_id` / `user_resolucion_id`
+  `user_registro_id` / `user_resolucion_id` — **con un límite que hay que
+  declarar acá, no descubrirlo en una fiscalización**: esos dos ids se
+  **suprimen** cuando el titular se anonimiza. En las solicitudes de titulares
+  anonimizados la separación de funciones ya no es auditable en este registro.
+  Se suprimen a propósito: el módulo guarda `Auth::id()` sin poder distinguir al
+  funcionario del propio ciudadano, y en un sistema con portal ciudadano ese id
+  ES la persona, o sea un puntero directo al titular que sobreviviría a la
+  anonimización. Si el municipio necesita acreditar la separación de funciones
+  también sobre casos ya anonimizados, la evidencia tiene que venir de otra capa
+  (el `activity_log` del sistema, por ejemplo) y hay que nombrarla en la
+  sección 4.
 
 ### 5.2 Por confirmar en este sistema (pendientes de verificación)
 No son propiedades del módulo, sino de cada instalación. Marcar solo después de

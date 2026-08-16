@@ -101,12 +101,16 @@ Agregar a `.env` y a `.env.example`:
 ```
 PRIVACIDAD_SISTEMA=discapacidad
 PRIVACIDAD_PLAZO_RESPUESTA_DIAS=30
+PRIVACIDAD_PLAZO_NOTIFICACION_BRECHA_DIAS=3
+PRIVACIDAD_DISCO_EVIDENCIA=local
 PRIVACIDAD_RESPONSABLE="I. Municipalidad de Graneros"
 PRIVACIDAD_CONTACTO=
 PRIVACIDAD_DELEGADO=
 ```
 
 `PRIVACIDAD_SISTEMA` ya no tiene valor por defecto en el paquete: sin él, el RAT sale vacío y la retención no encuentra finalidades.
+
+`PRIVACIDAD_DISCO_EVIDENCIA` tiene que nombrar el disco donde ESTE sistema guarda los documentos cuyas rutas le pasa al módulo (`Solicitudes::acoger($respuestaPath)`, `Consentimientos::otorgar(['evidencia_path' => …])`). El módulo nunca los escribió: solo los borra al anonimizar. Si el valor apunta a otro disco, el barrido no encuentra nada, **no falla**, y la anonimización deja el expediente y el consentimiento firmado vivos en disco. Verificarlo con una anonimización de prueba y mirar la constancia `retencion.constancia`: `archivos_no_encontrados` alto con `archivos_suprimidos` en cero es exactamente ese defecto.
 
 - [ ] **Step 5: Commit aislado**
 

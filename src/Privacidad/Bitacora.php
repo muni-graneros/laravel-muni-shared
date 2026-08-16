@@ -122,9 +122,18 @@ class Bitacora
      * Anular la ruta sin borrar el archivo es peor que no hacer nada: el
      * expediente y el consentimiento firmado siguen en disco —siguen siendo
      * datos personales— y ya nadie sabe de quién eran ni cómo encontrarlos para
-     * suprimirlos. El módulo escribió estas rutas, así que el módulo las limpia;
-     * dejárselo al adoptante «para después» no funciona, porque después de este
-     * UPDATE la información de qué archivo borrar ya no existe en ninguna parte.
+     * suprimirlos. Por eso el borrado va acá y no «después» en el adoptante:
+     * después de este UPDATE, la información de qué archivo borrar ya no existe
+     * en ninguna parte.
+     *
+     * Ojo con el reparto de responsabilidades, porque acá decía que el módulo
+     * había escrito estos archivos y es falso: las dos rutas llegan de afuera
+     * —`Solicitudes::acoger($respuestaPath)` y
+     * `Consentimientos::otorgar(['evidencia_path' => …])`— y la única llamada a
+     * `Storage` en todo `src/` es este borrado. El módulo no eligió el disco ni
+     * subió el documento: borra en el disco que el adoptante declaró en
+     * `privacidad.disco_evidencia`, y si esa declaración está equivocada no
+     * borra nada y no se entera (ver el comentario de esa clave).
      *
      * @var array<string, list<string>>
      */

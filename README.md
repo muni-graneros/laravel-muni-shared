@@ -85,10 +85,22 @@ En el `.env`:
 ```
 PRIVACIDAD_SISTEMA=discapacidad
 PRIVACIDAD_PLAZO_RESPUESTA_DIAS=30
+PRIVACIDAD_PLAZO_NOTIFICACION_BRECHA_DIAS=3
+PRIVACIDAD_DISCO_EVIDENCIA=local
 PRIVACIDAD_RESPONSABLE="I. Municipalidad de Graneros"
 PRIVACIDAD_CONTACTO=privacidad@municipalidadgraneros.cl
 PRIVACIDAD_DELEGADO=
 ```
+
+`PRIVACIDAD_DISCO_EVIDENCIA` es **paso obligatorio de adopción**, no un ajuste
+opcional: tiene que nombrar el disco donde ESTE sistema guarda los documentos
+cuyas rutas le pasa al módulo (`Solicitudes::acoger($respuestaPath)` y
+`Consentimientos::otorgar(['evidencia_path' => …])`). El módulo nunca los
+escribió —solo los borra al anonimizar—, así que si el valor apunta a otro
+disco el barrido no encuentra nada, **no falla**, y la anonimización termina
+dejando el expediente y el consentimiento firmado vivos en disco. Se detecta
+mirando la constancia `retencion.constancia` de la corrida:
+`archivos_no_encontrados` alto con `archivos_suprimidos` en cero.
 
 ### Lo que cada sistema debe aportar
 
