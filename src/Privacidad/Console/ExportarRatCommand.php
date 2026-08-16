@@ -3,6 +3,7 @@
 namespace Muni\Shared\Privacidad\Console;
 
 use Illuminate\Console\Command;
+use Muni\Shared\Privacidad\Modelos\Encargado;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
 
 /**
@@ -24,7 +25,10 @@ class ExportarRatCommand extends Command
         // parte del historial de tratamiento, y el RAT existe para que una
         // fiscalización vea lo que el sistema realmente hizo, no una versión
         // recortada. El estado se muestra, nunca se oculta.
-        $finalidades = Finalidad::query()->delSistema($sistema)->orderBy('codigo')->get();
+        //
+        // `with('encargados')` para no convertir el mapeo de abajo en un N+1:
+        // sin esto, cada finalidad dispara su propia consulta a la tabla pivote.
+        $finalidades = Finalidad::query()->delSistema($sistema)->with('encargados')->orderBy('codigo')->get();
 
         // El chequeo de --json va primero: quien redirige la salida a
         // `json_decode` no puede recibir una línea de advertencia en texto
@@ -46,6 +50,11 @@ class ExportarRatCommand extends Command
                     'plazo_retencion_meses' => $f->plazo_retencion_meses,
                     'categorias_datos' => $f->categorias_datos,
                     'destinatarios' => $f->destinatarios,
+                    'encargados' => $f->encargados->map(fn (Encargado $e): array => [
+                        'nombre' => $e->nombre,
+                        'rol' => $e->rol,
+                        'contrato_vence_en' => $e->contrato_vence_en?->toDateString(),
+                    ])->all(),
                 ])->all(),
             ], JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR));
 
@@ -72,6 +81,18 @@ class ExportarRatCommand extends Command
                 $f->activa ? 'Vigente' : 'Dada de baja',
             ])->all(),
         );
+
+        // Después de la tabla y no antes: es un aviso sobre el estado de los
+        // contratos, no sobre las finalidades, y mezclarlo adentro de la tabla
+        // (que es por finalidad) le haría perder la fila que le corresponde a
+        // cada encargado —una finalidad puede tener varios, y un encargado
+        // varias finalidades—.
+        $sinContrato = Encargado::query()->where('sistema', $sistema)->sinContratoVigente()->pluck('nombre');
+
+        if ($sinContrato->isNotEmpty()) {
+            $this->warn('Encargados sin contrato al día: '.$sinContrato->implode(', ')
+                .'. La ley exige contrato con cada encargado del tratamiento.');
+        }
 
         return self::SUCCESS;
     }

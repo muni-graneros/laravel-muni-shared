@@ -4,6 +4,7 @@ namespace Muni\Shared\Privacidad\Modelos;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Muni\Shared\Privacidad\BaseLicitud;
 use Muni\Shared\Privacidad\CategoriaDato;
 use Muni\Shared\Privacidad\CategoriasDatoCast;
@@ -109,5 +110,18 @@ class Finalidad extends Model
     public function scopeDelSistema(Builder $query, string $sistema): void
     {
         $query->where('sistema', $sistema);
+    }
+
+    /**
+     * Los encargados y destinatarios a los que esta finalidad comunica datos.
+     *
+     * La contraparte con contrato y control de vigencia de lo que
+     * `destinatarios` describía como una simple lista de nombres.
+     *
+     * @return BelongsToMany<Encargado>
+     */
+    public function encargados(): BelongsToMany
+    {
+        return $this->belongsToMany(Encargado::class, 'privacidad_encargado_finalidad', 'finalidad_id', 'encargado_id');
     }
 }
