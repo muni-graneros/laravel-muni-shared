@@ -85,6 +85,96 @@ it('rechaza llenar una columna probatoria que estaba en null', function () {
         ->toThrow(QueryException::class);
 });
 
+// --- Autoría y vínculo: no se congelan, se les pone dirección ---
+
+/**
+ * Una entrada con autor y titular puestos, escrita por debajo del modelo.
+ *
+ * Por query builder y no por `registrar()` porque hace falta controlar el
+ * `user_id` y el `titular_id` exactos que después se intentan falsificar.
+ */
+function entradaConAutor(int $userId = 7, ?int $titularId = 1, ?string $ref = null): void
+{
+    DB::table('privacidad_bitacora')->insert([
+        'sistema' => 'discapacidad',
+        'evento' => 'prueba.evento',
+        'datos' => '{"campo":"valor"}',
+        'ocurrido_en' => now(),
+        'user_id' => $userId,
+        'titular_type' => 'persona',
+        'titular_id' => $titularId,
+        'titular_ref' => $ref,
+        'created_at' => now(),
+        'updated_at' => now(),
+    ]);
+}
+
+it('el motor rechaza reasignarle la acción a otro funcionario', function () {
+    entradaConAutor(userId: 7);
+
+    expect(fn () => DB::table('privacidad_bitacora')->update(['user_id' => 999]))
+        ->toThrow(QueryException::class)
+        ->and(EntradaBitacora::sole()->user_id)->toBe(7);
+});
+
+it('el motor rechaza inventarle un autor a una fila ya anonimizada', function () {
+    // El barrido de desvincular() deja el user_id en null. Volver a llenarlo es
+    // fabricar autoría sobre evidencia huérfana, y no lo necesita ningún flujo:
+    // el autor se escribe en el INSERT.
+    entradaConAutor(userId: 7);
+    DB::table('privacidad_bitacora')->update(['user_id' => null]);
+
+    expect(fn () => DB::table('privacidad_bitacora')->update(['user_id' => 999]))
+        ->toThrow(QueryException::class)
+        ->and(EntradaBitacora::sole()->user_id)->toBeNull();
+});
+
+it('el motor rechaza mudar la entrada a otro titular', function () {
+    entradaConAutor(titularId: 1);
+
+    expect(fn () => DB::table('privacidad_bitacora')->update(['titular_id' => 4242]))
+        ->toThrow(QueryException::class)
+        ->and(EntradaBitacora::sole()->titular_id)->toBe(1);
+});
+
+it('el motor rechaza volver a colgar de un titular una fila ya anonimizada', function () {
+    entradaConAutor(titularId: null);
+
+    expect(fn () => DB::table('privacidad_bitacora')->update(['titular_id' => 4242]))
+        ->toThrow(QueryException::class)
+        ->and(EntradaBitacora::sole()->titular_id)->toBeNull();
+});
+
+it('el motor rechaza mover o borrar la referencia de agrupación ya escrita', function (?string $valor) {
+    entradaConAutor(titularId: null, ref: 'referencia-original');
+
+    expect(fn () => DB::table('privacidad_bitacora')->update(['titular_ref' => $valor]))
+        ->toThrow(QueryException::class)
+        ->and(EntradaBitacora::sole()->titular_ref)->toBe('referencia-original');
+})->with([
+    'mudarla a otro grupo' => ['inventado'],
+    'borrarla y perder el expediente' => [null],
+]);
+
+it('el barrido de la anonimización sigue pudiendo soltar autor y titular de una vez', function () {
+    // Es literalmente el UPDATE de Bitacora::desvincular(), con las tres
+    // columnas en la misma sentencia.
+    entradaConAutor(userId: 7, titularId: 1);
+
+    DB::table('privacidad_bitacora')->update([
+        'user_id' => null,
+        'titular_id' => null,
+        'titular_ref' => 'ref-de-la-corrida',
+    ]);
+
+    $entrada = EntradaBitacora::sole();
+
+    expect($entrada->user_id)->toBeNull()
+        ->and($entrada->titular_id)->toBeNull()
+        ->and($entrada->titular_ref)->toBe('ref-de-la-corrida')
+        ->and($entrada->evento)->toBe('prueba.evento');
+});
+
 it('el mensaje del motor dice de qué tabla se trata', function () {
     app(Textos::class)->publicar('aviso_recoleccion', 'Original');
 

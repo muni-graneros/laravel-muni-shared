@@ -51,21 +51,22 @@ final class InmutabilidadEnBaseDeDatos
      *
      * Lo que queda FUERA de la lista es tan deliberado como lo que está dentro,
      * porque el módulo mismo usa el query builder para dos barridos legítimos y
-     * el trigger tiene que dejarlos pasar:
+     * el trigger tiene que dejarlos pasar. Los punteros que esos barridos mueven
+     * no quedan libres: quedan en COLUMNAS_SOLO_HACIA_NULL y
+     * COLUMNAS_UNA_SOLA_VEZ, que son el mismo trigger con una condición
+     * direccional. Lo que sí queda libre, y por qué:
      *
-     * - `privacidad_textos.vigente_hasta` lo cierra `Textos::publicar()` al
-     *   publicar la versión siguiente. Cerrar una vigencia no cambia lo que la
-     *   persona leyó; editar el contenido sí.
-     * - `privacidad_bitacora.titular_id`, `titular_ref` y `user_id` los barre
-     *   `Bitacora::desvincular()` al anonimizar. Ahí la ley obliga a cortar el
-     *   vínculo, y el hecho auditable —qué pasó, con qué datos, cuándo— es
-     *   justamente lo que tiene que sobrevivir: por eso `evento`, `datos` y
-     *   `ocurrido_en` están en la lista y el puntero al titular no.
-     * - `titular_type` tampoco se protege: `desvincular()` decidió conservarlo,
-     *   pero es una decisión de ese barrido y no evidencia. Protegerlo sería
-     *   congelar por trigger algo que el módulo podría querer limpiar mañana.
+     * - `titular_type` no se protege: `desvincular()` decidió conservarlo, pero
+     *   es una decisión de ese barrido y no evidencia. Protegerlo sería congelar
+     *   por trigger algo que el módulo podría querer limpiar mañana.
      * - `updated_at` queda libre: no acredita nada y protegerlo haría fallar
      *   cualquier `touch()` con un error de motor en vez del error de dominio.
+     * - `privacidad_textos.vigente_hasta` lo cierra `Textos::publicar()` al
+     *   publicar la versión siguiente. Cerrar una vigencia no cambia lo que la
+     *   persona leyó; editar el contenido sí. Queda escribible, y eso permite
+     *   reescribir la línea de tiempo de qué aviso estaba vigente cuándo: es
+     *   impacto bajo —el consentimiento guarda el id del texto, no la fecha— y
+     *   está anotado como residuo, no como olvido.
      *
      * `sistema`, `codigo`, `version` y `vigente_desde` están protegidas junto
      * con `contenido` y `hash` porque la prueba no es solo el texto: es QUÉ
@@ -81,6 +82,53 @@ final class InmutabilidadEnBaseDeDatos
     ];
 
     /**
+     * Punteros que solo pueden soltarse: cualquier valor → NULL, nunca al revés.
+     *
+     * Existe porque congelar el hecho y dejar libre la autoría no es
+     * inmutabilidad, es media inmutabilidad, y la mitad que quedaba abierta era
+     * la peor: con la primera versión del trigger puesta,
+     * `update privacidad_bitacora set user_id = 999, titular_id = 4242` pasaba
+     * sin excepción en los dos motores. O sea que se podía reasignar una acción
+     * a otro funcionario, o volver a colgar de un titular cualquiera una fila ya
+     * anonimizada, sin tocar una letra de QUÉ pasó. El trigger congelaba el
+     * hecho y dejaba reescribible quién lo hizo.
+     *
+     * La condición es direccional porque los dos barridos sancionados
+     * —`Bitacora::desvincular()` y `Bitacora::registrarConstancia()`— solo mueven
+     * estas columnas HACIA null: cortan el vínculo, nunca lo crean ni lo mudan.
+     * Así que se rechaza todo NEW que no sea NULL y difiera del OLD, con lo que
+     * el barrido sigue pasando y la falsificación no.
+     *
+     * Es un paso más estricto que impedir solo la reasignación (viejo → otro
+     * viejo): también rechaza NULL → 999, que es inventarle un autor o un titular
+     * a una fila que ya se anonimizó. Falsificar sobre una fila huérfana es tan
+     * falsificación como falsificar sobre una viva, y ningún flujo del módulo
+     * vuelve a llenar estas columnas por UPDATE: se llenan en el INSERT, que el
+     * trigger no mira.
+     *
+     * @var array<string, list<string>>
+     */
+    public const COLUMNAS_SOLO_HACIA_NULL = [
+        'privacidad_bitacora' => ['user_id', 'titular_id'],
+    ];
+
+    /**
+     * Columnas que se escriben una vez y ahí quedan: NULL → valor, y nunca más.
+     *
+     * `titular_ref` es la referencia opaca que agrupa las filas huérfanas de una
+     * misma anonimización. `desvincular()` la escribe una sola vez sobre un NULL
+     * —nunca la cambia ni la borra—, así que la dirección permitida es esa y
+     * ninguna otra: cambiarla mezcla los expedientes de dos personas
+     * anonimizadas, y ponerla en NULL destruye la agrupación que hace legible un
+     * caso completo. Las dos cosas son alteración de la evidencia.
+     *
+     * @var array<string, list<string>>
+     */
+    public const COLUMNAS_UNA_SOLA_VEZ = [
+        'privacidad_bitacora' => ['titular_ref'],
+    ];
+
+    /**
      * Mensaje con que el motor rechaza cada tabla.
      *
      * Cortos a propósito: `SIGNAL … SET MESSAGE_TEXT` de MySQL/MariaDB trunca a
@@ -90,7 +138,7 @@ final class InmutabilidadEnBaseDeDatos
      */
     public const MENSAJES = [
         'privacidad_textos' => 'privacidad_textos es inmutable: publique una version nueva, no edite la publicada.',
-        'privacidad_bitacora' => 'privacidad_bitacora es append-only: la evidencia del tratamiento no se altera.',
+        'privacidad_bitacora' => 'privacidad_bitacora es append-only: no se altera el hecho ni de quien fue.',
     ];
 
     /** Instala el guardia. Sin efecto en drivers sin SQL propio. */
@@ -106,16 +154,27 @@ final class InmutabilidadEnBaseDeDatos
             return;
         }
 
-        foreach (self::COLUMNAS as $tabla => $columnas) {
+        foreach (array_keys(self::MENSAJES) as $tabla) {
             $conexion->unprepared(self::sqlDeBorrado($tabla));
-            $conexion->unprepared(self::sqlDeCreacion($driver, $tabla, $columnas, self::MENSAJES[$tabla]));
+            $conexion->unprepared(self::sqlDeCreacion($driver, $tabla, self::MENSAJES[$tabla]));
         }
     }
 
-    /** Quita el guardia. Idempotente: sirve igual si nunca se instaló. */
+    /**
+     * Quita el guardia. Idempotente: sirve igual si nunca se instaló.
+     *
+     * Mira `soporta()` por lo mismo que `proteger()`: en un driver sin SQL
+     * propio no hay trigger que borrar y el `DROP TRIGGER` sale con un error de
+     * sintaxis del motor, o sea que el `down()` de la migración fallaría en un
+     * adoptante que nunca tuvo el guardia puesto.
+     */
     public static function desproteger(Connection $conexion): void
     {
-        foreach (array_keys(self::COLUMNAS) as $tabla) {
+        if (! self::soporta($conexion->getDriverName())) {
+            return;
+        }
+
+        foreach (array_keys(self::MENSAJES) as $tabla) {
             $conexion->unprepared(self::sqlDeBorrado($tabla));
         }
     }
@@ -138,22 +197,12 @@ final class InmutabilidadEnBaseDeDatos
         return 'DROP TRIGGER IF EXISTS '.self::nombreDelTrigger($tabla);
     }
 
-    /**
-     * @param  list<string>  $columnas
-     */
-    private static function sqlDeCreacion(string $driver, string $tabla, array $columnas, string $mensaje): string
+    private static function sqlDeCreacion(string $driver, string $tabla, string $mensaje): string
     {
         $trigger = self::nombreDelTrigger($tabla);
+        $condicion = implode(' OR ', self::condiciones($driver, $tabla));
 
         if ($driver === 'sqlite') {
-            // `IS NOT` en SQLite compara con NULL incluido: sin eso, cambiar una
-            // columna nullable de NULL a un valor daría NULL en la condición y
-            // el trigger dejaría pasar la alteración.
-            $condicion = implode(' OR ', array_map(
-                fn (string $columna): string => "NEW.\"{$columna}\" IS NOT OLD.\"{$columna}\"",
-                $columnas,
-            ));
-
             return <<<SQL
                 CREATE TRIGGER {$trigger}
                 BEFORE UPDATE ON "{$tabla}"
@@ -163,13 +212,6 @@ final class InmutabilidadEnBaseDeDatos
                 END
                 SQL;
         }
-
-        // `<=>` es el igual seguro con NULL de MySQL/MariaDB, el equivalente al
-        // `IS NOT` de SQLite.
-        $condicion = implode(' OR ', array_map(
-            fn (string $columna): string => "NOT (NEW.`{$columna}` <=> OLD.`{$columna}`)",
-            $columnas,
-        ));
 
         return <<<SQL
             CREATE TRIGGER {$trigger}
@@ -181,5 +223,44 @@ final class InmutabilidadEnBaseDeDatos
                 END IF;
             END
             SQL;
+    }
+
+    /**
+     * Las condiciones que hacen abortar el UPDATE, una por columna protegida.
+     *
+     * Las tres formas dicen «cambió» de la misma manera —con la comparación
+     * segura con NULL de cada motor: `IS NOT` en SQLite, `NOT (… <=> …)` en
+     * MySQL/MariaDB— y se diferencian solo en qué dirección del cambio se
+     * tolera. Con `=` a secas, cualquier comparación contra NULL da NULL y el
+     * trigger dejaría pasar justo las alteraciones que empiezan o terminan en
+     * NULL, que son las que más se parecen a un barrido legítimo.
+     *
+     * @return list<string>
+     */
+    private static function condiciones(string $driver, string $tabla): array
+    {
+        $sqlite = $driver === 'sqlite';
+        $columna = fn (string $nombre): string => $sqlite ? "\"{$nombre}\"" : "`{$nombre}`";
+        $cambio = fn (string $nombre): string => $sqlite
+            ? "NEW.{$columna($nombre)} IS NOT OLD.{$columna($nombre)}"
+            : "NOT (NEW.{$columna($nombre)} <=> OLD.{$columna($nombre)})";
+
+        $condiciones = [];
+
+        foreach (self::COLUMNAS[$tabla] ?? [] as $nombre) {
+            $condiciones[] = $cambio($nombre);
+        }
+
+        foreach (self::COLUMNAS_SOLO_HACIA_NULL[$tabla] ?? [] as $nombre) {
+            // Se tolera soltar el puntero (→ NULL) y nada más.
+            $condiciones[] = "({$cambio($nombre)} AND NEW.{$columna($nombre)} IS NOT NULL)";
+        }
+
+        foreach (self::COLUMNAS_UNA_SOLA_VEZ[$tabla] ?? [] as $nombre) {
+            // Se tolera estrenar la columna (NULL → valor) y nada más.
+            $condiciones[] = "({$cambio($nombre)} AND OLD.{$columna($nombre)} IS NOT NULL)";
+        }
+
+        return $condiciones;
     }
 }
