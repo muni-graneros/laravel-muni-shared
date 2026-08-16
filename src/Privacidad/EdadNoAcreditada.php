@@ -5,8 +5,13 @@ namespace Muni\Shared\Privacidad;
 use DomainException;
 
 /**
- * El tratamiento exige saber si el titular es NNA y no se sabe, o se pidió el
- * consentimiento directo de un menor de edad.
+ * El tratamiento exige saber si el titular es NNA y el sistema no tiene su
+ * fecha de nacimiento.
+ *
+ * UNA sola cosa, y esto antes no era así: la clase cubría también «un menor
+ * intentó consentir solo», que es un estado distinto y pide una acción
+ * distinta del funcionario. Eso vive ahora en `RepresentacionRequerida`; acá
+ * queda solo la edad desconocida, que es lo que el nombre dice.
  *
  * Falla en vez de asumir mayoría de edad. Los dos errores posibles no cuestan lo
  * mismo: equivocarse hacia acá cuesta que alguien tenga que ir a acreditar una
@@ -16,6 +21,7 @@ use DomainException;
  *
  * Es `DomainException` y no una excepción de validación porque el estado que
  * describe es del dominio: la edad no está acreditada. Quien la atrape en un
- * panel debería ofrecer acreditarla, no reintentar.
+ * panel debería ofrecer acreditarla —pedir el documento con la fecha de
+ * nacimiento—, no reintentar.
  */
 class EdadNoAcreditada extends DomainException {}

@@ -47,6 +47,8 @@ class Consentimientos
         // rechazar, y un rechazo no tiene por qué abrir una transacción.
         $texto = $this->textoDe($opciones);
 
+        $acreditacion = $this->acreditacionDe($opciones, $otorgadoPor);
+
         $this->exigirRegimenDeNna($titular, $finalidad, $otorgadoPor);
 
         // La transacción sigue existiendo por la razón 2, no por la 1: si el registro
@@ -56,7 +58,7 @@ class Consentimientos
         // índice único sobre `vigente_clave` (ver la migración), no el orden de
         // llamadas: dos otorgar() concurrentes que ambos intenten insertar la misma
         // clave chocan en la base de datos, no en la aplicación.
-        return DB::transaction(function () use ($titular, $finalidad, $medio, $opciones, $otorgadoPor, $texto) {
+        return DB::transaction(function () use ($titular, $finalidad, $medio, $opciones, $otorgadoPor, $texto, $acreditacion) {
             // Si había uno vigente, se cierra primero.
             $this->revocar($titular, $finalidad);
 
@@ -68,6 +70,9 @@ class Consentimientos
                 'otorgado_en' => now(),
                 'medio' => $medio,
                 'evidencia_path' => $opciones['evidencia_path'] ?? null,
+                // El documento que acredita que quien firmó por otro podía
+                // hacerlo. Null solo cuando actúa el propio titular.
+                'acreditacion_path' => $acreditacion,
                 // La fila que el adoptante MOSTRÓ, no una que se resuelva acá.
                 // Ausente la opción queda null, que es el camino de los
                 // consentimientos en papel anteriores a esta tabla: no tienen
@@ -155,6 +160,50 @@ class Consentimientos
             "«{$valor}» no es un valor de Solicitante. Los que hay: "
             .implode(', ', array_column(Solicitante::cases(), 'value')).'.',
         );
+    }
+
+    /**
+     * La ruta del documento que acredita la representación, exigida cuando
+     * actúa alguien que no es el titular.
+     *
+     * `Solicitante::exigeAcreditarRepresentacion()` nombraba esta regla desde
+     * el primer día y no la llamaba nadie: se podía otorgar un consentimiento
+     * «por el representante legal» eligiendo esa opción y nada más. Con eso, el
+     * régimen reforzado de NNA quedaba satisfecho por un desplegable, y la fila
+     * afirmaba una representación que ningún papel respaldaba.
+     *
+     * Lo que esta comprobación garantiza, en su medida exacta: que exista una
+     * ruta no vacía. NO comprueba que el archivo exista en el disco, ni que el
+     * documento diga lo que dice ser, ni quién es el representante —el módulo
+     * nunca escribió esos archivos, ver el comentario de
+     * `privacidad.disco_evidencia`—. Lo que cierra es el camino de registrar
+     * una representación sin ningún documento detrás, que era el estado
+     * anterior.
+     *
+     * @param  array<string, mixed>  $opciones
+     *
+     * @throws RepresentacionNoAcreditada si actúa un tercero y no viene la ruta
+     */
+    private function acreditacionDe(array $opciones, Solicitante $otorgadoPor): ?string
+    {
+        $ruta = trim((string) ($opciones['acreditacion_path'] ?? ''));
+
+        if (! $otorgadoPor->exigeAcreditarRepresentacion()) {
+            // Al titular no se le pide: acredita su identidad, no una
+            // representación. Si igual mandó una ruta, se guarda —no estorba y
+            // rechazarla no protegería nada—, pero no se exige.
+            return $ruta === '' ? null : $ruta;
+        }
+
+        if ($ruta === '') {
+            throw new RepresentacionNoAcreditada(
+                "El consentimiento lo otorga «{$otorgadoPor->etiqueta()}» y no se acompañó el documento que "
+                .'acredita la representación. Adjuntarlo y pasar su ruta en `acreditacion_path`: sin él, la '
+                .'fila afirmaría una representación que nadie puede mostrar.',
+            );
+        }
+
+        return $ruta;
     }
 
     /**
@@ -257,8 +306,8 @@ class Consentimientos
         // siguen: ni si la finalidad lo admite, ni quién tiene que firmar.
         if ($esNNA === null) {
             throw new EdadNoAcreditada(
-                'No se puede pedir consentimiento sin saber si el titular es mayor de edad: '
-                .'la edad no está acreditada en este sistema.',
+                'No se puede pedir consentimiento sin saber si el titular es mayor de edad: este sistema no '
+                .'tiene su fecha de nacimiento. Acreditarla con el documento correspondiente y reintentar.',
             );
         }
 
@@ -274,9 +323,16 @@ class Consentimientos
 
         // Apoderado tampoco sirve, y no es un olvido: un menor no puede otorgar
         // mandato, así que un apoderado suyo no existe jurídicamente.
+        //
+        // Excepción propia y NO `EdadNoAcreditada`: acá la edad está acreditada
+        // —por eso llegamos hasta esta línea— y lo que falta es el
+        // representante. Compartir clase mandaba al funcionario a buscar un
+        // certificado de nacimiento que ya no hacía falta.
         if ($otorgadoPor !== Solicitante::RepresentanteLegal) {
-            throw new EdadNoAcreditada(
-                'El consentimiento de un menor de edad lo otorga su representante legal, no él mismo.',
+            throw new RepresentacionRequerida(
+                'El consentimiento de un menor de edad lo otorga su representante legal, no él mismo ni un '
+                .'apoderado suyo: un menor no puede otorgar mandato. Registrarlo con el representante legal '
+                .'y el documento que acredite serlo.',
             );
         }
     }

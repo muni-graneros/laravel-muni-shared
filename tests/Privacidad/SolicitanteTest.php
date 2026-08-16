@@ -58,8 +58,11 @@ it('por defecto ejerce el propio titular', function () {
 
 it('el consentimiento guarda quién lo otorgó con el mismo vocabulario', function () {
     // Es el caso de NNA: consiente el representante legal, el titular es el niño.
+    // Va con la acreditación porque desde este ciclo el módulo la exige a todo
+    // el que no es el titular: elegir la etiqueta no acredita nada.
     app(Consentimientos::class)->otorgar($this->titular, $this->difusion, MedioDeConsentimiento::FirmaPapel, [
         'otorgado_por' => Solicitante::RepresentanteLegal,
+        'acreditacion_path' => 'acreditaciones/certificado-nacimiento.pdf',
     ]);
 
     expect(Consentimiento::sole()->otorgado_por)->toBe(Solicitante::RepresentanteLegal)

@@ -11,6 +11,8 @@ use Muni\Shared\Privacidad\FinalidadInvalida;
 use Muni\Shared\Privacidad\MedioDeConsentimiento;
 use Muni\Shared\Privacidad\Modelos\Consentimiento;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
+use Muni\Shared\Privacidad\RepresentacionNoAcreditada;
+use Muni\Shared\Privacidad\RepresentacionRequerida;
 use Muni\Shared\Privacidad\Solicitante;
 use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
 
@@ -152,13 +154,16 @@ it('el consentimiento de un NNA lo otorga su representante legal, no él mismo',
         $this->finalidad,
         MedioDeConsentimiento::FirmaPapel,
         ['otorgado_por' => Solicitante::Titular],
-    ))->toThrow(EdadNoAcreditada::class);
+    ))->toThrow(RepresentacionRequerida::class);
 
     $ok = app(Consentimientos::class)->otorgar(
         $nna,
         $this->finalidad,
         MedioDeConsentimiento::FirmaPapel,
-        ['otorgado_por' => Solicitante::RepresentanteLegal],
+        [
+            'otorgado_por' => Solicitante::RepresentanteLegal,
+            'acreditacion_path' => 'acreditaciones/certificado-nacimiento.pdf',
+        ],
     );
 
     expect($ok->exists)->toBeTrue()
@@ -179,7 +184,7 @@ it('un menor tampoco consiente por omisión de otorgado_por', function () {
         $nna,
         $this->finalidad,
         MedioDeConsentimiento::FirmaPapel,
-    ))->toThrow(EdadNoAcreditada::class);
+    ))->toThrow(RepresentacionRequerida::class);
 
     expect(Consentimiento::query()->count())->toBe(0);
 });
@@ -195,8 +200,11 @@ it('un menor tampoco consiente vía apoderado: no puede otorgar mandato', functi
         $nna,
         $this->finalidad,
         MedioDeConsentimiento::FirmaPapel,
-        ['otorgado_por' => Solicitante::Apoderado],
-    ))->toThrow(EdadNoAcreditada::class);
+        [
+            'otorgado_por' => Solicitante::Apoderado,
+            'acreditacion_path' => 'acreditaciones/mandato.pdf',
+        ],
+    ))->toThrow(RepresentacionRequerida::class);
 });
 
 it('acepta el representante legal escrito como string, que es lo que el cast admite', function () {
@@ -213,7 +221,10 @@ it('acepta el representante legal escrito como string, que es lo que el cast adm
         $nna,
         $this->finalidad,
         MedioDeConsentimiento::FirmaPapel,
-        ['otorgado_por' => 'representante_legal'],
+        [
+            'otorgado_por' => 'representante_legal',
+            'acreditacion_path' => 'acreditaciones/certificado-nacimiento.pdf',
+        ],
     );
 
     expect($ok->otorgado_por)->toBe(Solicitante::RepresentanteLegal);
@@ -234,7 +245,10 @@ it('rechaza pedir consentimiento a quien no tiene la edad acreditada', function 
         $sinFecha,
         $this->finalidad,
         MedioDeConsentimiento::FirmaPapel,
-        ['otorgado_por' => Solicitante::RepresentanteLegal],
+        [
+            'otorgado_por' => Solicitante::RepresentanteLegal,
+            'acreditacion_path' => 'acreditaciones/certificado-nacimiento.pdf',
+        ],
     ))->toThrow(EdadNoAcreditada::class);
 });
 
@@ -251,7 +265,10 @@ it('una finalidad que no admite NNA los rechaza aunque consienta el representant
         $nna,
         $this->finalidad,
         MedioDeConsentimiento::FirmaPapel,
-        ['otorgado_por' => Solicitante::RepresentanteLegal],
+        [
+            'otorgado_por' => Solicitante::RepresentanteLegal,
+            'acreditacion_path' => 'acreditaciones/certificado-nacimiento.pdf',
+        ],
     ))->toThrow(FinalidadInvalida::class);
 });
 
@@ -326,4 +343,116 @@ it('un titular que no implementa el contrato no pasa por el régimen de NNA', fu
         $this->finalidad,
         MedioDeConsentimiento::FirmaPapel,
     )->exists)->toBeTrue();
+});
+
+it('el representante legal de un NNA tiene que acreditar la representación', function () {
+    // El hallazgo que esto cierra: el régimen reforzado se satisfacía eligiendo
+    // un valor de un desplegable. La fila decía «lo otorgó su representante
+    // legal» sin documento, sin identidad y sin nada que mostrarle a nadie.
+    $nna = PersonaDePrueba::create([
+        'nombre' => 'Menor',
+        'documento' => '11.111.111-1',
+        'fecha_nacimiento' => now()->subYears(10)->toDateString(),
+    ]);
+
+    expect(fn () => app(Consentimientos::class)->otorgar(
+        $nna,
+        $this->finalidad,
+        MedioDeConsentimiento::FirmaPapel,
+        ['otorgado_por' => Solicitante::RepresentanteLegal],
+    ))->toThrow(RepresentacionNoAcreditada::class);
+
+    expect(Consentimiento::query()->count())->toBe(0);
+});
+
+it('también un adulto que consiente por apoderado tiene que acreditar el mandato', function () {
+    // No es una regla de menores: es la que nombra Solicitante::exigeAcreditarRepresentacion(),
+    // que existía y no la llamaba nadie. Quien actúa por otro lo acredita.
+    $adulto = PersonaDePrueba::create([
+        'nombre' => 'Adulta',
+        'documento' => '22.222.222-2',
+        'fecha_nacimiento' => now()->subYears(40)->toDateString(),
+    ]);
+
+    expect(fn () => app(Consentimientos::class)->otorgar(
+        $adulto,
+        $this->finalidad,
+        MedioDeConsentimiento::FirmaPapel,
+        ['otorgado_por' => Solicitante::Apoderado],
+    ))->toThrow(RepresentacionNoAcreditada::class);
+
+    $ok = app(Consentimientos::class)->otorgar(
+        $adulto,
+        $this->finalidad,
+        MedioDeConsentimiento::FirmaPapel,
+        ['otorgado_por' => Solicitante::Apoderado, 'acreditacion_path' => 'acreditaciones/mandato.pdf'],
+    );
+
+    expect($ok->acreditacion_path)->toBe('acreditaciones/mandato.pdf');
+});
+
+it('una acreditación en blanco no acredita', function () {
+    $adulto = PersonaDePrueba::create([
+        'nombre' => 'Adulta',
+        'documento' => '22.222.222-2',
+        'fecha_nacimiento' => now()->subYears(40)->toDateString(),
+    ]);
+
+    expect(fn () => app(Consentimientos::class)->otorgar(
+        $adulto,
+        $this->finalidad,
+        MedioDeConsentimiento::FirmaPapel,
+        ['otorgado_por' => Solicitante::Apoderado, 'acreditacion_path' => '   '],
+    ))->toThrow(RepresentacionNoAcreditada::class);
+});
+
+it('al titular que actúa por sí mismo no se le pide acreditar nada', function () {
+    $adulto = PersonaDePrueba::create([
+        'nombre' => 'Adulta',
+        'documento' => '22.222.222-2',
+        'fecha_nacimiento' => now()->subYears(40)->toDateString(),
+    ]);
+
+    $ok = app(Consentimientos::class)->otorgar(
+        $adulto,
+        $this->finalidad,
+        MedioDeConsentimiento::FirmaPapel,
+    );
+
+    expect($ok->exists)->toBeTrue()
+        ->and($ok->acreditacion_path)->toBeNull();
+});
+
+it('las dos negativas del régimen de NNA son excepciones distintas', function () {
+    // Compartían clase, y el funcionario que las ve tiene que hacer cosas
+    // distintas: con la edad desconocida hay que pedir el documento de la fecha
+    // de nacimiento; con el menor que quiere firmar solo hay que llamar al
+    // representante. Se comprobó que ningún test las distinguía intercambiando
+    // los mensajes: la suite quedaba verde.
+    $sinFecha = PersonaDePrueba::create(['nombre' => 'Sin fecha', 'documento' => '33.333.333-3']);
+    $nna = PersonaDePrueba::create([
+        'nombre' => 'Menor',
+        'documento' => '11.111.111-1',
+        'fecha_nacimiento' => now()->subYears(10)->toDateString(),
+    ]);
+
+    $porEdad = rescue(fn () => app(Consentimientos::class)->otorgar(
+        $sinFecha, $this->finalidad, MedioDeConsentimiento::FirmaPapel,
+    ), fn (Throwable $e) => $e, false);
+
+    $porRepresentante = rescue(fn () => app(Consentimientos::class)->otorgar(
+        $nna, $this->finalidad, MedioDeConsentimiento::FirmaPapel,
+    ), fn (Throwable $e) => $e, false);
+
+    expect($porEdad)->toBeInstanceOf(EdadNoAcreditada::class)
+        ->and($porRepresentante)->toBeInstanceOf(RepresentacionRequerida::class)
+        // Y que ninguna sea subclase de la otra, o atrapar una seguiría
+        // atrapando las dos y el operador volvería a recibir el consejo
+        // equivocado.
+        ->and($porRepresentante)->not->toBeInstanceOf(EdadNoAcreditada::class)
+        ->and($porEdad)->not->toBeInstanceOf(RepresentacionRequerida::class);
+
+    // Cada mensaje dice qué hacer, y son cosas distintas.
+    expect($porEdad->getMessage())->toContain('fecha de nacimiento')
+        ->and($porRepresentante->getMessage())->toContain('representante legal');
 });

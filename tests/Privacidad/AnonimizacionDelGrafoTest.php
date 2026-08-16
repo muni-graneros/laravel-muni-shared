@@ -18,6 +18,7 @@ use Muni\Shared\Privacidad\Modelos\EntradaBitacora;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
 use Muni\Shared\Privacidad\Rectificaciones;
 use Muni\Shared\Privacidad\ResultadoVerificacion;
+use Muni\Shared\Privacidad\Solicitante;
 use Muni\Shared\Privacidad\Solicitudes;
 use Muni\Shared\Privacidad\Textos;
 use Muni\Shared\Privacidad\TipoDeSolicitud;
@@ -194,8 +195,13 @@ beforeEach(function () {
             $rectificacion, ['nombre' => $persona->nombre.' Soto'], "Se corrigió con la cédula de {$persona->nombre} a la vista",
         );
 
+        // Lo otorga un apoderado con mandato: así la historia sembrada cubre
+        // también `acreditacion_path`, que es un documento DE UN TERCERO y por
+        // eso tiene que borrarse del disco igual que el consentimiento firmado.
         app(Consentimientos::class)->otorgar($persona, $this->accesoria, MedioDeConsentimiento::FirmaPapel, [
             'evidencia_path' => 'consentimientos/'.str_replace(['.', '-'], '', $rut).'.pdf',
+            'acreditacion_path' => 'acreditaciones/'.str_replace(['.', '-'], '', $rut).'.pdf',
+            'otorgado_por' => Solicitante::Apoderado,
             'texto' => $this->textoConsentimiento,
             'ip' => $ip,
         ]);
@@ -293,6 +299,7 @@ it('la retención borra del disco la respuesta al titular y el consentimiento fi
     $rut = str_replace(['.', '-'], '', (string) $this->titular->documento);
     Storage::disk('local')->put("respuestas/{$rut}.pdf", 'expediente completo');
     Storage::disk('local')->put("consentimientos/{$rut}.pdf", 'firma escaneada');
+    Storage::disk('local')->put("acreditaciones/{$rut}.pdf", 'mandato del apoderado');
     // El de la persona vigente: el barrido no puede llevárselo por delante.
     Storage::disk('local')->put('respuestas/222222222.pdf', 'expediente de la vigente');
 
@@ -300,11 +307,12 @@ it('la retención borra del disco la respuesta al titular y el consentimiento fi
 
     Storage::disk('local')->assertMissing("respuestas/{$rut}.pdf");
     Storage::disk('local')->assertMissing("consentimientos/{$rut}.pdf");
+    Storage::disk('local')->assertMissing("acreditaciones/{$rut}.pdf");
     Storage::disk('local')->assertExists('respuestas/222222222.pdf');
 
     $corrida = EntradaBitacora::where('evento', 'retencion.constancia')->sole();
 
-    expect($corrida->datos['archivos_suprimidos'])->toBe(2)
+    expect($corrida->datos['archivos_suprimidos'])->toBe(3)
         ->and($corrida->datos['archivos_no_encontrados'])->toBe(0);
 });
 

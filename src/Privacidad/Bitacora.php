@@ -112,6 +112,11 @@ class Bitacora
         'privacidad_consentimientos' => [
             'vigente_clave' => null,
             'evidencia_path' => null,
+            // El documento que acredita la representación es de un TERCERO
+            // —certificado de nacimiento, sentencia, mandato— y nombra tanto al
+            // representante como al titular. Se borra y se anula con el mismo
+            // criterio que el consentimiento firmado.
+            'acreditacion_path' => null,
             'ip_hash' => null,
             'user_id' => null,
         ],
@@ -161,7 +166,7 @@ class Bitacora
      */
     private const ARCHIVOS = [
         'privacidad_solicitudes' => ['respuesta_path'],
-        'privacidad_consentimientos' => ['evidencia_path'],
+        'privacidad_consentimientos' => ['evidencia_path', 'acreditacion_path'],
     ];
 
     public function __construct(private readonly RegistroDeEvidencia $evidencia) {}
