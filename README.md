@@ -124,7 +124,7 @@ mirando la constancia `retencion.constancia` de la corrida:
 
 | Contrato | Obligatorio | Qué resuelve |
 |---|---|---|
-| `TitularDeDatos` | Sí | Cómo se exporta, purga y anonimiza a una persona, y qué campos (`camposRectificables()`) puede corregir mediante el derecho de rectificación — no es un cheque en blanco sobre todo el registro |
+| `TitularDeDatos` | Sí | Cómo se exporta, purga y anonimiza a una persona, qué campos (`camposRectificables()`) puede corregir mediante el derecho de rectificación —no es un cheque en blanco sobre todo el registro— y su fecha de nacimiento (`fechaNacimientoTitular()`), de la que depende el régimen reforzado de NNA |
 | `ResuelveTitularesVencidos` | Solo si hay retención | Desde cuándo se trata a un titular bajo cada finalidad |
 | `VerificadorIdentidad` | Por convención | Cómo se acredita que el solicitante es el titular. El paquete **no lo resuelve del contenedor**: `Solicitudes::registrar()` recibe un `ResultadoVerificacion` ya construido. Es el código que llama —la acción del panel, el mesón— el que debe verificar con él antes de registrar; implementarlo y no usarlo no protege nada |
 | `PropagaRectificacion` | Solo si es modelo de lectura del maestro | Que la rectificación no la pise la próxima sincronización. **Debe ser síncrono**: tiene que conocer la respuesta del maestro antes de devolver. Despachar un job en cola y devolver `true` no es una implementación válida —informa éxito antes de que el maestro haya visto nada—. Devolver `false` o lanzar significan lo mismo: no se propagó |
@@ -132,6 +132,29 @@ mirando la constancia `retencion.constancia` de la corrida:
 
 Además, cada sistema siembra sus finalidades: es donde declara qué trata, con
 qué base y por cuánto tiempo.
+
+### Régimen reforzado de niños, niñas y adolescentes
+
+`Consentimientos::otorgar()` no acepta el consentimiento de un menor de edad: lo
+otorga su representante legal (`['otorgado_por' => Solicitante::RepresentanteLegal]`).
+Ni el propio titular ni un apoderado —un menor no puede otorgar mandato—.
+
+**Una fecha de nacimiento `null` no significa adulto**, significa que la edad no
+está acreditada, y `otorgar()` la rechaza con `EdadNoAcreditada`. Es el mismo
+criterio de `Brecha::riesgo_alto`, donde `null` es «todavía sin evaluar». Un
+sistema que devuelva siempre `null` en `fechaNacimientoTitular()` **no podrá
+otorgar ningún consentimiento**: eso es intencional, y se resuelve acreditando la
+fecha, no relajando la comprobación.
+
+La comprobación solo corre para titulares que implementan `TitularDeDatos`, que
+es a quienes se les puede preguntar la fecha. Y solo cubre el camino de
+`Consentimientos::otorgar()`: un adoptante que cree filas de
+`privacidad_consentimientos` a mano se la salta.
+
+La finalidad puede además cerrarse a los NNA con `admite_nna = false` en el RAT,
+y entonces se rechaza con `FinalidadInvalida` aunque firme el representante
+legal. El default es `true`, para no apagar retroactivamente finalidades que ya
+vienen tratando menores.
 
 ### Atender un acceso o una portabilidad
 
