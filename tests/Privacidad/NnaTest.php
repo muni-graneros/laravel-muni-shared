@@ -1,6 +1,7 @@
 <?php
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\DB;
 use Muni\Shared\Privacidad\BaseLicitud;
 use Muni\Shared\Privacidad\Consentimientos;
@@ -63,6 +64,74 @@ it('el día en que se cumplen 18 años ya no es NNA', function () {
 
     expect(app(Edades::class)->esNNA($recienMayor))->toBeFalse()
         ->and(app(Edades::class)->esNNA($vispera))->toBeTrue();
+});
+
+it('la frontera se cruza en la zona horaria del municipio, no en la del valor recibido', function () {
+    // El caso que el fixture no puede ejercitar: `fecha_nacimiento` está
+    // casteada por Eloquent y sale siempre en la zona de la aplicación, así que
+    // ninguna prueba que pase por el modelo ve este defecto. Un adoptante que
+    // hidrate la fecha desde el maestro federado de personas como
+    // `DateTimeImmutable` en UTC sí lo ve: durante las últimas tres horas antes
+    // del cumpleaños número 18, `Carbon::instance($fecha)->age` comparaba contra
+    // el «ahora» de UTC, donde ya es el día siguiente, y convertía a un menor en
+    // adulto.
+    config(['app.timezone' => 'America/Santiago']);
+    Carbon::setTestNow(Carbon::parse('2026-06-15 21:00:00', 'America/Santiago'));
+
+    $enSantiago = new class extends PersonaDePrueba
+    {
+        public function fechaNacimientoTitular(): ?DateTimeInterface
+        {
+            return new DateTimeImmutable('2008-06-16', new DateTimeZone('America/Santiago'));
+        }
+    };
+
+    $enUtc = new class extends PersonaDePrueba
+    {
+        public function fechaNacimientoTitular(): ?DateTimeInterface
+        {
+            return new DateTimeImmutable('2008-06-16', new DateTimeZone('UTC'));
+        }
+    };
+
+    // La misma fecha de calendario tiene que dar el mismo régimen jurídico
+    // venga en la zona que venga: la víspera del cumpleaños, todavía es NNA.
+    expect(app(Edades::class)->esNNA($enSantiago))->toBeTrue()
+        ->and(app(Edades::class)->esNNA($enUtc))->toBeTrue();
+
+    // Y al día siguiente, en Santiago, deja de serlo por ambos caminos.
+    Carbon::setTestNow(Carbon::parse('2026-06-16 09:00:00', 'America/Santiago'));
+
+    expect(app(Edades::class)->esNNA($enSantiago))->toBeFalse()
+        ->and(app(Edades::class)->esNNA($enUtc))->toBeFalse();
+
+    Carbon::setTestNow();
+});
+
+it('quien nació un 29 de febrero cumple los 18 el 1 de marzo, no el 28', function () {
+    // Se fija la conducta DEL MÓDULO, no una certeza jurídica: el art. 48 del
+    // Código Civil, aplicado a un plazo de años que empieza un día que el mes
+    // final no tiene, admite leerse como que vence el último día de ese mes (28
+    // de febrero). El módulo elige el día siguiente, que es el lado
+    // conservador: trata al titular como NNA un día más. La duda queda anotada
+    // en docs/superpowers/specs/2026-08-13-ley-21719-pendientes.md.
+    config(['app.timezone' => 'America/Santiago']);
+
+    $bisiesto = new class extends PersonaDePrueba
+    {
+        public function fechaNacimientoTitular(): ?DateTimeInterface
+        {
+            return new DateTimeImmutable('2008-02-29', new DateTimeZone('America/Santiago'));
+        }
+    };
+
+    Carbon::setTestNow(Carbon::parse('2026-02-28 12:00:00', 'America/Santiago'));
+    expect(app(Edades::class)->esNNA($bisiesto))->toBeTrue();
+
+    Carbon::setTestNow(Carbon::parse('2026-03-01 12:00:00', 'America/Santiago'));
+    expect(app(Edades::class)->esNNA($bisiesto))->toBeFalse();
+
+    Carbon::setTestNow();
 });
 
 it('sin fecha de nacimiento devuelve null, que NO es adulto', function () {
