@@ -55,3 +55,33 @@ jobs:
           MUNI_MARIADB_HOST: 127.0.0.1
           MUNI_MARIADB_PORT: 33061
         run: ./vendor/bin/pest
+
+      # Este job no puede probar su propio nombre. Sin la variable, la suite
+      # corre en SQLite, imprime «3 skipped» y sale con 0: el mismo verde que
+      # este job imprimiría si alguien renombrara o borrara `MUNI_MARIADB_HOST`
+      # del paso de arriba. Así que la evidencia se busca donde no se puede
+      # fingir: en el servidor. Si la suite corrió de verdad contra él, la base
+      # `prueba` quedó con las tablas del módulo y con los dos triggers del
+      # guardia de inmutabilidad instalados por las migraciones.
+      #
+      # Con el cliente de la imagen oficial y no con el del runner, que no
+      # garantiza traer ninguno.
+      - name: La corrida usó MariaDB de verdad
+        run: |
+          set -euo pipefail
+          consultar() {
+            docker run --rm --network host mariadb:11 \
+              mariadb -h127.0.0.1 -P33061 --protocol=tcp -uroot -psecret -N -B -e "$1"
+          }
+          tablas=$(consultar "select count(*) from information_schema.tables
+            where table_schema='prueba'
+              and table_name in ('privacidad_bitacora','privacidad_textos');")
+          triggers=$(consultar "select count(*) from information_schema.triggers
+            where trigger_schema='prueba'
+              and trigger_name in ('privacidad_bitacora_inmutable_bu','privacidad_textos_inmutable_bu');")
+          echo "tablas=$tablas triggers=$triggers"
+          if [ "$tablas" != "2" ] || [ "$triggers" != "2" ]; then
+            echo "::error::La suite NO corrió contra MariaDB: la base «prueba» no tiene el esquema del módulo." >&2
+            echo "Revisar que el paso «Pest (MariaDB)» siga exportando MUNI_MARIADB_HOST y que TestCase la siga leyendo." >&2
+            exit 1
+          fi

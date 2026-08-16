@@ -59,3 +59,28 @@ fi
 
 MUNI_MARIADB_HOST=127.0.0.1 MUNI_MARIADB_PORT="$PUERTO" \
     vendor/bin/pest "$@"
+
+# Y ahora la pregunta que el verde de arriba no contesta: ¿corrió CONTRA ESTO?
+#
+# Sin la variable, la misma suite pasa en SQLite y sale con 0. O sea que este
+# script podría estar levantando un contenedor, ignorándolo y felicitándose.
+# Se comprueba donde no se puede fingir: si la suite corrió acá, las migraciones
+# dejaron las tablas del módulo y los dos triggers del guardia.
+consultar() {
+    docker exec "$CONTENEDOR" \
+        mariadb -h127.0.0.1 --protocol=tcp -uroot -psecret -N -B -e "$1"
+}
+
+tablas=$(consultar "select count(*) from information_schema.tables
+    where table_schema='prueba' and table_name in ('privacidad_bitacora','privacidad_textos');")
+triggers=$(consultar "select count(*) from information_schema.triggers
+    where trigger_schema='prueba'
+      and trigger_name in ('privacidad_bitacora_inmutable_bu','privacidad_textos_inmutable_bu');")
+
+if [ "$tablas" != "2" ] || [ "$triggers" != "2" ]; then
+    echo "La suite NO corrió contra este MariaDB: la base «prueba» quedó sin el esquema del módulo" >&2
+    echo "(tablas=$tablas, triggers=$triggers). El verde de arriba no vale." >&2
+    exit 1
+fi
+
+echo "Verificado contra el motor: la base «prueba» tiene el esquema y los $triggers triggers del guardia."
