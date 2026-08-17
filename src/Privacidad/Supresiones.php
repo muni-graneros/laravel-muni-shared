@@ -168,7 +168,23 @@ class Supresiones
      * @throws SupresionNoPropagada si falta la declaración sobre el maestro o el
      *                              maestro rechaza la supresión
      * @throws ArchivoNoSuprimido si el disco no confirma el borrado de un
-     *                            documento: la supresión entera se revierte
+     *                            documento. Lo que se revierte es la
+     *                            TRANSACCIÓN de base de datos —la solicitud
+     *                            vuelve a estar sin resolver y el titular sin
+     *                            anonimizar—; los documentos que sí se
+     *                            alcanzaron a borrar antes de la falla NO
+     *                            vuelven. El disco no participa del rollback y
+     *                            no hay forma de que participe.
+     *
+     *                            O sea que el estado tras esta excepción es
+     *                            real y hay que atenderlo a mano: una ficha
+     *                            viva a la que le faltan documentos. Se
+     *                            eligió así a propósito —ver el comentario del
+     *                            orden más abajo—: purgar lo sensible al final,
+     *                            para que el rollback lo cubriera, dejaría el
+     *                            caso opuesto y peor, un registro anonimizado
+     *                            conservando el archivo sensible sin nadie a
+     *                            quien asociarlo para borrarlo después.
      */
     public function aplicar(Solicitud $solicitud, string $fundamento, ?string $respuestaPath = null): ResultadoDeSupresion
     {

@@ -51,7 +51,23 @@ final readonly class EvaluacionDeSupresion
         return $this->impiden !== [] && $this->cesan !== [];
     }
 
-    /** Todas las finalidades obligan a conservar: no hay nada que suprimir todavía. */
+    /**
+     * Todas las finalidades obligan a conservar: no hay nada que suprimir
+     * todavía.
+     *
+     * En la práctica es un estado difícil de alcanzar, y conviene saberlo
+     * antes de apoyarse en él: basta UNA finalidad por consentimiento, o una
+     * por función legal sin `plazo_retencion_meses` declarado, o una cuyo plazo
+     * ya venció para este titular, para que algo cese y la evaluación caiga en
+     * `esParcial()`. Montar este caso en los tests del módulo exigió desactivar
+     * finalidades del RAT sembrado.
+     *
+     * Dicho al revés, que es como importa: **un RAT realista casi nunca niega
+     * una supresión entera**. La respuesta habitual del sistema a una solicitud
+     * de supresión es la acogida parcial —cesa lo que puede cesar, se conserva
+     * lo que la norma manda—, y eso es lo que hay que saber explicar en el
+     * mesón.
+     */
     public function noProcede(): bool
     {
         return $this->impiden !== [] && $this->cesan === [];
