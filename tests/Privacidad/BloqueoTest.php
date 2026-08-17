@@ -150,6 +150,42 @@ it('el cese de una oposición acogida queda en la bitácora', function () {
         ->and(EntradaBitacora::where('evento', 'bloqueo.levantado')->count())->toBe(0);
 });
 
+it('un bloqueo puesto en otro sistema no cesa el tratamiento en este', function () {
+    // `privacidad_bloqueos` la comparten los ocho sistemas del ecosistema, y
+    // `vigente()` no miraba la columna `sistema` que `bloquear()` sí escribe.
+    // El efecto era una oposición acogida en licencias dejando sin atención a
+    // alguien en discapacidad, que nunca lo pidió.
+    config(['privacidad.sistema' => 'licencias']);
+
+    app(Bloqueos::class)->bloquear($this->titular, null, 'Oposición acogida en licencias');
+
+    config(['privacidad.sistema' => 'discapacidad']);
+
+    expect(app(Bloqueos::class)->vigente($this->titular))->toBeFalse()
+        ->and(app(Bloqueos::class)->vigente($this->titular, $this->finalidad))->toBeFalse();
+});
+
+it('el bloqueo de otro sistema se puede ver, para que nadie cese de menos en silencio', function () {
+    config(['privacidad.sistema' => 'licencias']);
+    app(Bloqueos::class)->bloquear($this->titular, null, 'Oposición acogida en licencias');
+
+    config(['privacidad.sistema' => 'discapacidad']);
+    app(Bloqueos::class)->bloquear($this->titular, $this->finalidad, 'Oposición acogida acá');
+
+    expect(app(Bloqueos::class)->sistemasConBloqueoVigente($this->titular))
+        ->toBe(['discapacidad', 'licencias']);
+});
+
+it('un bloqueo levantado ya no aparece entre los sistemas del ecosistema', function () {
+    config(['privacidad.sistema' => 'licencias']);
+    $bloqueo = app(Bloqueos::class)->bloquear($this->titular, null, 'Rectificación en trámite');
+    $bloqueo->update(['levantado_en' => now()]);
+
+    config(['privacidad.sistema' => 'discapacidad']);
+
+    expect(app(Bloqueos::class)->sistemasConBloqueoVigente($this->titular))->toBe([]);
+});
+
 it('con la configuración apagada no bloquea nada', function () {
     config(['privacidad.bloquear_durante_solicitud' => false]);
 

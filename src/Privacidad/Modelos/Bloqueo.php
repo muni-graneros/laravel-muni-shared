@@ -56,4 +56,19 @@ class Bloqueo extends Model
     {
         $query->whereNull('levantado_en');
     }
+
+    /**
+     * Los bloqueos de UN sistema del ecosistema.
+     *
+     * Existe por lo mismo que el de `Finalidad`: esta tabla es compartida por
+     * los ocho sistemas y la columna estaba escrita pero no consultada. Ver el
+     * docblock de `Bloqueos` para por qué el alcance del bloqueo es el sistema
+     * en que se presentó la solicitud y no el ecosistema entero.
+     *
+     * @param  Builder<Bloqueo>  $query
+     */
+    public function scopeDelSistema(Builder $query, string $sistema): void
+    {
+        $query->where('sistema', $sistema);
+    }
 }
