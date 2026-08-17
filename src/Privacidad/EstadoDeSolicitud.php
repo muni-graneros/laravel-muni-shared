@@ -18,6 +18,20 @@ enum EstadoDeSolicitud: string
     }
 
     /**
+     * Los estados de una solicitud que todavía está abierta.
+     *
+     * Se DERIVA de `estaResuelta()` en vez de listarse a mano: una lista
+     * paralela envejece mal —basta que un ciclo agregue un estado para que las
+     * dos digan cosas distintas—, y este módulo ya se equivocó así antes.
+     *
+     * @return array<int, self>
+     */
+    public static function pendientes(): array
+    {
+        return array_values(array_filter(self::cases(), fn (self $estado): bool => ! $estado->estaResuelta()));
+    }
+
+    /**
      * Si la resolución le dio la razón al titular, entera o en parte.
      *
      * `AcogidaParcial` cuenta como acogida y no como un punto medio: lo que

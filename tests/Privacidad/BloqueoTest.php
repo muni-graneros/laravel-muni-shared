@@ -258,6 +258,70 @@ it('levantar dos veces no reescribe la fecha ni duplica la constancia', function
         ->and(EntradaBitacora::where('evento', 'bloqueo.levantado')->count())->toBe(1);
 });
 
+it('el bloqueo preventivo de una rectificación no impide corregir el dato', function () {
+    // El bloqueo se muerde la cola: registrar una rectificación suspende el
+    // tratamiento sobre TODAS las finalidades, y un adoptante que consulte
+    // `vigente()` honestamente antes de propagar la corrección al maestro se
+    // frena a sí mismo el cumplimiento del derecho que está tramitando.
+    app(Solicitudes::class)->registrar(
+        $this->titular, TipoDeSolicitud::Rectificacion, 'Mi apellido está mal', $this->verificacion,
+    );
+
+    expect(app(Bloqueos::class)->vigente($this->titular))->toBeTrue()
+        ->and(app(Bloqueos::class)->impideCorregir($this->titular))->toBeFalse();
+});
+
+it('una oposición acogida sí impide corregir', function () {
+    $solicitud = app(Solicitudes::class)->registrar(
+        $this->titular, TipoDeSolicitud::Oposicion, 'Me opongo', $this->verificacion,
+    );
+
+    app(Solicitudes::class)->acoger($solicitud, 'Se acoge: cesa el tratamiento.');
+
+    expect(app(Bloqueos::class)->impideCorregir($this->titular))->toBeTrue();
+});
+
+it('el bloqueo preventivo de una OPOSICIÓN en trámite sí impide corregir', function () {
+    // La excepción es angosta a propósito: alcanza SOLO al bloqueo que puso la
+    // rectificación, que es el que se muerde la cola. Corregir el dato no es
+    // el ejercicio del derecho que una oposición pone en trámite, así que ese
+    // bloqueo no se exceptúa.
+    app(Solicitudes::class)->registrar(
+        $this->titular, TipoDeSolicitud::Oposicion, 'Me opongo', $this->verificacion,
+    );
+
+    expect(app(Bloqueos::class)->impideCorregir($this->titular))->toBeTrue();
+});
+
+it('un bloqueo puesto a mano impide corregir', function () {
+    app(Bloqueos::class)->bloquear($this->titular, null, 'Se opuso por teléfono');
+
+    expect(app(Bloqueos::class)->impideCorregir($this->titular))->toBeTrue();
+});
+
+it('una rectificación ya resuelta deja de exceptuar a su bloqueo', function () {
+    // La excepción vale mientras el trámite está abierto. Si la solicitud se
+    // resolvió y aun así quedó un bloqueo vigente ligado a ella, ya no hay
+    // ningún derecho en curso que la corrección esté cumpliendo.
+    $solicitud = app(Solicitudes::class)->registrar(
+        $this->titular, TipoDeSolicitud::Rectificacion, 'Mi apellido está mal', $this->verificacion,
+    );
+
+    app(Solicitudes::class)->rechazar($solicitud, 'No procede: el dato está acreditado con la cédula.');
+    Bloqueo::query()->update(['levantado_en' => null]);
+
+    expect(app(Bloqueos::class)->impideCorregir($this->titular))->toBeTrue();
+});
+
+it('la rectificación en trámite de otro sistema no toca lo que este puede corregir', function () {
+    config(['privacidad.sistema' => 'licencias']);
+    app(Bloqueos::class)->bloquear($this->titular, null, 'Oposición acogida en licencias');
+
+    config(['privacidad.sistema' => 'discapacidad']);
+
+    expect(app(Bloqueos::class)->impideCorregir($this->titular))->toBeFalse();
+});
+
 it('con la configuración apagada no bloquea nada', function () {
     config(['privacidad.bloquear_durante_solicitud' => false]);
 

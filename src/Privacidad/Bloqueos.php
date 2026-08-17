@@ -321,6 +321,60 @@ class Bloqueos
     }
 
     /**
+     * Si hay un bloqueo vigente de este sistema que impida CORREGIR el dato del
+     * titular, que no es la misma pregunta que `vigente()`.
+     *
+     * ## El bloqueo que se muerde la cola
+     *
+     * Registrar una rectificación pone un bloqueo preventivo SIN finalidad, o
+     * sea sobre todas. Un adoptante que consulte `vigente()` honestamente antes
+     * de propagar la corrección al maestro de personas se frena a sí mismo el
+     * cumplimiento del derecho que está tramitando: el bloqueo que existe para
+     * proteger al titular mientras su dato está en disputa termina impidiendo
+     * que el dato se arregle. `discapacidad-graneros` lo descubrió construyendo
+     * su primer candado real y lo resolvió con una excepción a mano en su lado;
+     * el módulo no lo advertía en ninguna parte, así que el próximo adoptante lo
+     * iba a descubrir en producción o —peor— no lo iba a descubrir.
+     *
+     * Lo que distingue a las dos preguntas: suspender el tratamiento significa
+     * **no usar** el dato en disputa (no exhibirlo, no exportarlo, no cruzarlo,
+     * no decidir con él). Corregirlo no es usarlo: es la vía por la que la
+     * disputa termina. Por eso el bloqueo preventivo de una rectificación en
+     * trámite es lo único que este método exceptúa.
+     *
+     * La excepción es angosta a propósito, y conviene leer qué NO exceptúa:
+     *
+     * - El bloqueo de una **oposición** en trámite. Corregir el dato no es el
+     *   ejercicio del derecho que esa oposición puso en marcha.
+     * - El bloqueo **definitivo** de una oposición o una supresión acogidas. Ahí
+     *   el municipio resolvió que deja de tratar el dato, y escribir sobre él no
+     *   es cumplir nada.
+     * - Un bloqueo **sin solicitud** —puesto a mano por un funcionario—. El
+     *   módulo no tiene con qué saber que esa suspensión admita correcciones.
+     * - El bloqueo de una rectificación **ya resuelta** que siguiera vigente: sin
+     *   trámite abierto no hay derecho en curso que la corrección esté cumpliendo.
+     *
+     * Lo que este método NO consigue, igual que `vigente()`: que nada corrija el
+     * dato. Es una consulta; quien la haga antes de escribir es el adoptante.
+     */
+    public function impideCorregir(Model $titular, ?Finalidad $finalidad = null): bool
+    {
+        return $this->deEsteTitular($titular)
+            ->delSistema((string) config('privacidad.sistema'))
+            ->where(fn ($q) => $q->whereNull('finalidad_id')
+                ->when($finalidad, fn ($q) => $q->orWhere('finalidad_id', $finalidad->getKey())))
+            // Un bloqueo sin solicitud, o con una que no es una rectificación
+            // abierta, sí impide: `whereDoesntHave` da verdadero para los dos.
+            ->whereDoesntHave('solicitud', fn ($q) => $q
+                ->where('tipo', TipoDeSolicitud::Rectificacion->value)
+                ->whereIn('estado', array_map(
+                    fn (EstadoDeSolicitud $estado): string => $estado->value,
+                    EstadoDeSolicitud::pendientes(),
+                )))
+            ->exists();
+    }
+
+    /**
      * En qué sistemas del ecosistema hay hoy una suspensión vigente sobre este
      * titular, ESTE INCLUIDO.
      *
