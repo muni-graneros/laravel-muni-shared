@@ -36,6 +36,18 @@ destruía lo que el más largo obligaba a conservar — 11.517 casos. Se corrigi
 el código (ahora solo se suprime a quien venció en **todas** las finalidades con
 plazo), pero el código no puede saber cuál es el plazo correcto.
 
+**Y hay una consecuencia que conviene ver antes de que aparezca en el mesón.**
+Con los plazos sembrados hoy, `registro_comunal` es función legal con **120
+meses**. Eso significa que una persona registrada este año **no puede obtener
+una supresión total durante diez años**: la respuesta correcta del sistema a su
+solicitud es una *acogida parcial* — cesa el tratamiento donde puede cesar, se
+conserva lo que la norma manda.
+
+Jurídicamente es correcto y el sistema lo resuelve bien. Pero es lo que un
+funcionario va a tener que explicarle a un vecino que llegó a pedir que borren
+sus datos, y **esos 120 meses no los fijó nadie con competencia para fijarlos**:
+son la estimación que el propio seeder declara como pendiente de confirmación.
+
 **Quién contesta:** dirección jurídica del municipio, por sistema.
 
 ---
