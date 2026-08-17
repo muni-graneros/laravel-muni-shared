@@ -6,7 +6,6 @@ use Illuminate\Database\Eloquent\Collection;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Muni\Shared\Privacidad\Contratos\PropagaSupresion;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Contratos\ResuelveTitularesVencidos;
 use Muni\Shared\Privacidad\Contratos\TitularDeDatos;
@@ -31,6 +30,7 @@ class AplicarRetencion
         private readonly RegistroDeEvidencia $evidencia,
         private readonly ResuelveTitularesVencidos $resolvedor,
         private readonly Bitacora $bitacora,
+        private readonly SupresionEnElMaestro $maestro,
     ) {}
 
     /**
@@ -55,7 +55,7 @@ class AplicarRetencion
         // número siete significaría seis identidades destruidas localmente y
         // vivas en el registro federado.
         if (! $simulacion) {
-            $this->exigirDeclaracionSobreElMaestro();
+            $this->maestro->exigirDeclaracion();
         }
 
         [$porFinalidad, $conteo] = $this->contarVencidosPorFinalidad($finalidades);
@@ -241,7 +241,7 @@ class AplicarRetencion
         // defecto. Al revés —maestro primero— el peor caso es un titular
         // suprimido en el maestro y todavía completo acá, que la siguiente
         // corrida vuelve a intentar.
-        $this->propagarSupresion($titular, $documento);
+        $this->maestro->propagar($titular, $documento);
 
         // Todo lo local, con la marca de supresión puesta: el observador `saved`
         // del sistema adoptante la consulta para NO despachar el write-through
@@ -314,34 +314,6 @@ class AplicarRetencion
                     : null;
             });
         });
-    }
-
-    private function propagarSupresion(TitularDeDatos $titular, string $documento): void
-    {
-        // Ya se comprobó al empezar la corrida; se repite acá porque este método
-        // es el único punto por el que se destruye, y una comprobación lejos del
-        // efecto envejece mal.
-        $this->exigirDeclaracionSobreElMaestro();
-
-        if (! app(PropagaSupresion::class)->propagar($titular, $documento)) {
-            throw new SupresionNoPropagada(
-                'El maestro de personas rechazó la supresión: no se destruye el dato local, '
-                .'porque la identidad seguiría viva y consultable por RUT en el registro federado.',
-            );
-        }
-    }
-
-    private function exigirDeclaracionSobreElMaestro(): void
-    {
-        if (app()->bound(PropagaSupresion::class)) {
-            return;
-        }
-
-        throw new SupresionNoPropagada(
-            'El sistema no declaró qué debe pasar en el maestro de personas al suprimir a un titular. '
-            .'Enlazar Contratos\PropagaSupresion con la implementación que propaga la supresión al maestro, '
-            .'o con SupresionSoloLocal si este sistema no es modelo de lectura del maestro.',
-        );
     }
 
     /**
