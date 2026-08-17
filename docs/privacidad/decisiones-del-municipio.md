@@ -187,7 +187,32 @@ disco de una máquina.
 
 ---
 
-## 10. Quién es el titular en un proyecto nuevo
+## 10. Una finalidad sin plazo declarado, ¿obliga a conservar?
+
+**Qué se decide:** qué significa que una finalidad por función legal tenga
+`plazo_retencion_meses` en null.
+
+**Por qué aparece ahora:** desde que existe la supresión a petición del titular
+(`Supresiones::aplicar()`), esa ambigüedad tiene consecuencias opuestas según
+cómo se lea. Si null significa «conserva indefinidamente», el municipio le puede
+negar la supresión a un vecino apoyándose en esa finalidad. Si significa «no hay
+plazo declarado», no.
+
+**Qué está puesto hoy:** null **no impide** la supresión. Es la única lectura
+coherente con lo que ya hacía el sistema: `AplicarRetencion` lee ese mismo null
+como «no conserva a nadie». La lectura contraria dejaría al módulo negándole la
+supresión a una persona por una finalidad que su propio cron ignora al destruir
+a esa misma persona esa noche.
+
+**Qué pasa si nadie decide:** queda esa lectura. Es defendible, pero es una
+lectura hecha por un desarrollador para resolver una ambigüedad del esquema.
+
+**Quién contesta:** jurídica. Y la salida limpia no es interpretar el null: es
+**declarar el plazo** de cada finalidad — o sea, el punto 1 de esta lista.
+
+---
+
+## 11. Quién es el titular en un proyecto nuevo
 
 **Qué se decide:** cuando el scaffold genere un sistema nuevo, ¿sobre qué modelo
 se implementa el titular de datos?
