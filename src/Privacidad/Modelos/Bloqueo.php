@@ -20,7 +20,11 @@ use Illuminate\Support\Carbon;
  * @property string $motivo
  * @property Carbon $desde
  * @property Carbon|null $levantado_en
- * @property int|null $user_id
+ * @property string|null $levantado_motivo por qué se reanudó, que no es lo
+ *                                         mismo que `motivo` (por qué se
+ *                                         suspendió) y por eso no lo pisa
+ * @property int|null $user_id quién bloqueó
+ * @property int|null $user_levanta_id quién levantó
  */
 class Bloqueo extends Model
 {

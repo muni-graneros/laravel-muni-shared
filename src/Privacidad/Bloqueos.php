@@ -112,14 +112,120 @@ class Bloqueos
         });
     }
 
-    /** @return int cuántos bloqueos quedaron levantados */
+    /**
+     * Levanta UN bloqueo, diciendo por qué.
+     *
+     * Existe porque `levantarPorSolicitud()` era la única vía y dejaba un
+     * callejón sin salida: un bloqueo puesto a mano —o el que crea
+     * `volverDefinitivos()` cuando `bloquear_durante_solicitud` está apagada, que
+     * nace ligado a una solicitud ya resuelta— no se podía levantar por ninguna
+     * puerta del módulo. El sistema adoptante terminaba haciendo un UPDATE
+     * directo sobre una tabla del paquete, sin constancia de nada.
+     *
+     * Tres cosas que este método decide, y su porqué:
+     *
+     * 1. **Exige el motivo.** Levantar un cese es reanudar el tratamiento de
+     *    alguien que había obtenido que se detuviera. El módulo exige
+     *    `fundamento` en toda resolución de solicitud por la misma razón, y una
+     *    suspensión que termina sin ninguna explicación es exactamente lo que no
+     *    se puede mostrar en una fiscalización.
+     * 2. **No pisa `motivo`.** Ese texto dice por qué se suspendió y es lo único
+     *    que un funcionario lee para entender el caso; el porqué del
+     *    levantamiento es otro hecho y va en su propia columna.
+     * 3. **Un sistema no levanta el bloqueo de otro.** Es la contraparte de la
+     *    decisión de alcance del docblock de la clase: si el bloqueo de licencias
+     *    no cesa el tratamiento en discapacidad, discapacidad tampoco puede
+     *    reanudar lo que licencias detuvo.
+     *
+     * Lo que NO hace, para no venderlo de más: no comprueba que la solicitud que
+     * originó el bloqueo esté resuelta. Levantar el bloqueo preventivo de un
+     * trámite abierto es legítimo —la jefatura puede considerar la suspensión
+     * desproporcionada— y prohibirlo dejaría sin salida a un caso real. Lo que el
+     * módulo garantiza es que quede escrito quién lo hizo y por qué.
+     *
+     * @return bool false si ya estaba levantado, sin reescribir nada
+     *
+     * @throws ResolucionInvalida si va sin motivo, o si el bloqueo es de otro
+     *                            sistema del ecosistema
+     */
+    public function levantar(Bloqueo $bloqueo, string $motivo): bool
+    {
+        $sistema = (string) config('privacidad.sistema');
+
+        if ($bloqueo->sistema !== $sistema) {
+            throw new ResolucionInvalida(
+                "El bloqueo #{$bloqueo->getKey()} lo puso el sistema «{$bloqueo->sistema}» y este es "
+                ."«{$sistema}»: el cese del tratamiento lo levanta quien lo decidió, no otra ventanilla.",
+            );
+        }
+
+        if (trim($motivo) === '') {
+            throw new ResolucionInvalida(
+                "No se puede levantar el bloqueo #{$bloqueo->getKey()} sin decir por qué: reanudar un "
+                .'tratamiento que estaba suspendido es una decisión que hay que poder explicar después.',
+            );
+        }
+
+        if ($bloqueo->levantado_en !== null) {
+            return false;
+        }
+
+        return DB::transaction(function () use ($bloqueo, $motivo): bool {
+            // Condicionado a `vigentes()` y no un save() sobre la instancia: dos
+            // funcionarios levantando el mismo bloqueo en el mesón, y el segundo
+            // pisaría la fecha y el motivo del primero con los suyos. Así el
+            // segundo no escribe nada y se entera por el `false`.
+            $afectados = Bloqueo::query()
+                ->whereKey($bloqueo->getKey())
+                ->vigentes()
+                ->update([
+                    'levantado_en' => now(),
+                    'levantado_motivo' => $motivo,
+                    'user_levanta_id' => Auth::id(),
+                ]);
+
+            if ($afectados === 0) {
+                return false;
+            }
+
+            // El MISMO evento que `levantarPorSolicitud()` y con sus dos claves,
+            // para que «acá se levantó un bloqueo» se busque siempre igual; se
+            // suma `bloqueo_id`, que allá no existe porque allá se levantan
+            // varios de una vez.
+            //
+            // El motivo NO viaja: la invariante de `privacidad_bitacora.datos`
+            // es nombres de campo e ids, nunca prosa, y esta prosa la dicta un
+            // funcionario y puede nombrar al titular o a un tercero. Vive en la
+            // columna, que el barrido de `Bitacora::desvincular()` sí alcanza.
+            $this->evidencia->registrar('bloqueo.levantado', [
+                'bloqueo_id' => $bloqueo->getKey(),
+                'solicitud_id' => $bloqueo->solicitud_id,
+                'bloqueos' => 1,
+            ], $bloqueo->titular);
+
+            $bloqueo->refresh();
+
+            return true;
+        });
+    }
+
+    /**
+     * Levanta todos los bloqueos preventivos de una solicitud al resolverla.
+     *
+     * Acá el porqué del levantamiento NO va en `levantado_motivo` a propósito:
+     * es el `fundamento_resolucion` de la solicitud, que ya está escrito, fundado
+     * y ligado por `solicitud_id`. Copiarlo sería duplicar el mismo texto de un
+     * titular en dos tablas, que es justo lo que este módulo minimiza.
+     *
+     * @return int cuántos bloqueos quedaron levantados
+     */
     public function levantarPorSolicitud(Solicitud $solicitud): int
     {
         return DB::transaction(function () use ($solicitud): int {
             $afectados = Bloqueo::query()
                 ->where('solicitud_id', $solicitud->getKey())
                 ->vigentes()
-                ->update(['levantado_en' => now()]);
+                ->update(['levantado_en' => now(), 'user_levanta_id' => Auth::id()]);
 
             if ($afectados > 0) {
                 $this->evidencia->registrar('bloqueo.levantado', [

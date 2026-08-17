@@ -5,6 +5,7 @@ use Muni\Shared\Privacidad\Bloqueos;
 use Muni\Shared\Privacidad\Modelos\Bloqueo;
 use Muni\Shared\Privacidad\Modelos\EntradaBitacora;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
+use Muni\Shared\Privacidad\ResolucionInvalida;
 use Muni\Shared\Privacidad\ResultadoVerificacion;
 use Muni\Shared\Privacidad\Solicitudes;
 use Muni\Shared\Privacidad\TipoDeSolicitud;
@@ -184,6 +185,77 @@ it('un bloqueo levantado ya no aparece entre los sistemas del ecosistema', funct
     config(['privacidad.sistema' => 'discapacidad']);
 
     expect(app(Bloqueos::class)->sistemasConBloqueoVigente($this->titular))->toBe([]);
+});
+
+it('un bloqueo sin solicitud se puede levantar', function () {
+    // Solo existía `levantarPorSolicitud()`: un bloqueo puesto a mano —o el que
+    // crea `volverDefinitivos()` cuando la bandera está apagada— no tenía
+    // ninguna vía del módulo para levantarse. En producción eso es un callejón
+    // sin salida, y el sistema adoptante termina haciendo UPDATE a mano sobre
+    // una tabla del módulo.
+    $bloqueo = app(Bloqueos::class)->bloquear($this->titular, null, 'Se opuso por teléfono');
+
+    $levantado = app(Bloqueos::class)->levantar($bloqueo, 'Retiró la oposición por escrito el 12-08.');
+
+    expect($levantado)->toBeTrue()
+        ->and(app(Bloqueos::class)->vigente($this->titular))->toBeFalse()
+        ->and($bloqueo->fresh()->levantado_en)->not->toBeNull()
+        // El motivo original NO se pisa: es lo que explica por qué se suspendió.
+        ->and($bloqueo->fresh()->motivo)->toBe('Se opuso por teléfono')
+        ->and($bloqueo->fresh()->levantado_motivo)->toBe('Retiró la oposición por escrito el 12-08.');
+});
+
+it('levantar deja la misma constancia que levantar por solicitud', function () {
+    $bloqueo = app(Bloqueos::class)->bloquear($this->titular, null, 'Se opuso por teléfono');
+
+    app(Bloqueos::class)->levantar($bloqueo, 'Retiró la oposición.');
+
+    $constancia = EntradaBitacora::where('evento', 'bloqueo.levantado')->sole();
+
+    expect($constancia->datos['bloqueo_id'])->toBe($bloqueo->getKey())
+        // Las dos claves que ya escribía `levantarPorSolicitud()`, para que
+        // «acá se levantó un bloqueo» se busque siempre igual.
+        ->and($constancia->datos['bloqueos'])->toBe(1)
+        ->and($constancia->datos)->toHaveKey('solicitud_id')
+        // El texto del funcionario NO viaja a la bitácora: su invariante es
+        // nombres de campo e ids, nunca prosa que pueda nombrar a alguien.
+        ->and($constancia->datos)->not->toHaveKey('motivo');
+});
+
+it('levantar un bloqueo exige decir por qué', function () {
+    // Levantar un cese es reanudar el tratamiento de alguien que había obtenido
+    // que se detuviera. El módulo exige fundamento para toda resolución de una
+    // solicitud; esto es la misma decisión y no puede quedar sin explicación.
+    $bloqueo = app(Bloqueos::class)->bloquear($this->titular, null, 'Oposición acogida');
+
+    expect(fn () => app(Bloqueos::class)->levantar($bloqueo, '   '))
+        ->toThrow(ResolucionInvalida::class);
+
+    expect(app(Bloqueos::class)->vigente($this->titular))->toBeTrue();
+});
+
+it('un sistema no puede levantar el bloqueo de otro', function () {
+    config(['privacidad.sistema' => 'licencias']);
+    $bloqueo = app(Bloqueos::class)->bloquear($this->titular, null, 'Oposición acogida en licencias');
+
+    config(['privacidad.sistema' => 'discapacidad']);
+
+    expect(fn () => app(Bloqueos::class)->levantar($bloqueo, 'Acá no molesta.'))
+        ->toThrow(ResolucionInvalida::class);
+
+    expect($bloqueo->fresh()->levantado_en)->toBeNull();
+});
+
+it('levantar dos veces no reescribe la fecha ni duplica la constancia', function () {
+    $bloqueo = app(Bloqueos::class)->bloquear($this->titular, null, 'Oposición acogida');
+
+    app(Bloqueos::class)->levantar($bloqueo, 'Retiró la oposición.');
+    $primera = $bloqueo->fresh()->levantado_en;
+
+    expect(app(Bloqueos::class)->levantar($bloqueo->fresh(), 'De nuevo.'))->toBeFalse()
+        ->and($bloqueo->fresh()->levantado_en->eq($primera))->toBeTrue()
+        ->and($bloqueo->fresh()->levantado_motivo)->toBe('Retiró la oposición.')
+        ->and(EntradaBitacora::where('evento', 'bloqueo.levantado')->count())->toBe(1);
 });
 
 it('con la configuración apagada no bloquea nada', function () {

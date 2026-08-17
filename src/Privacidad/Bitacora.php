@@ -132,6 +132,11 @@ class Bitacora
         ],
         'privacidad_bloqueos' => [
             'user_id' => null,
+            // Quién levantó la suspensión, con la misma exposición que `user_id`
+            // y por el mismo motivo (ver el pendiente 5-quater del spec): en un
+            // adoptante con portal ciudadano ese entero puede ser la cuenta del
+            // propio titular.
+            'user_levanta_id' => null,
             // Prosa dictada por el funcionario que aplica el bloqueo («la hija
             // llamó a reclamar por el apellido», «se opone y adjunta cédula de
             // la madre»): puede nombrar al titular o a un tercero. NOT NULL,
@@ -146,6 +151,12 @@ class Bitacora
             // «este bloqueo lo abrió esta solicitud», que es justo el hecho
             // auditable que el bloqueo existe para dejar constancia.
             'motivo' => self::SUPRIMIDO,
+            // Misma prosa de funcionario que `motivo`, del otro lado del hecho:
+            // «la hija volvió a llamar y retiró el reclamo». Va a null y no al
+            // centinela porque la columna es nullable: poner «[suprimido al
+            // anonimizar]» en las filas que nunca se levantaron las haría
+            // parecer levantadas.
+            'levantado_motivo' => null,
         ],
     ];
 
