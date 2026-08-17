@@ -413,17 +413,21 @@ finalidad del RAT—. Hay que escribirlo a mano, sistema por sistema:
    está tratando datos para algo que nunca declaró.
 3. Poner en cada uno la guarda: `Bloqueos::vigente($titular, $finalidad)` antes
    de usar el dato, e `impideCorregir($titular, $finalidad)` antes de
-   escribirlo.
+   escribirlo. Las dos devuelven `true` cuando hay bloqueo, o sea cuando **no**
+   se puede.
 4. Probarlo con un titular bloqueado de verdad, en el navegador, no en un test
    unitario del mapeo.
 
 Las dos preguntas no son la misma, y confundirlas tiene una consecuencia
 concreta:
 
-| Pregunta | Método | Para qué |
+| Método | Devuelve `true` cuando | Preguntarlo antes de |
 |---|---|---|
-| ¿Puedo **usar** este dato? | `vigente($titular, $finalidad)` | Exhibir, exportar, cruzar, notificar, decidir |
-| ¿Puedo **corregir** este dato? | `impideCorregir($titular, $finalidad)` | Escribir la rectificación que el titular pidió |
+| `vigente($titular, $finalidad)` | hay una suspensión que alcanza a esa finalidad | **usar** el dato: exhibirlo, exportarlo, cruzarlo, notificar, decidir |
+| `impideCorregir($titular, $finalidad)` | lo mismo, salvo el bloqueo preventivo de una rectificación en trámite | **corregir** el dato: escribir la rectificación que el titular pidió |
+
+Las dos devuelven `true` cuando **no** se puede: son «¿está bloqueado?», no
+«¿puedo?».
 
 Registrar una rectificación pone un bloqueo preventivo **sin finalidad**, o sea
 sobre todas. Un adoptante que consultara `vigente()` antes de aplicar la
