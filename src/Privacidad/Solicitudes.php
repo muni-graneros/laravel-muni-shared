@@ -52,6 +52,11 @@ class Solicitudes
      * @throws RepresentacionNoAcreditada si actúa un tercero sin documento
      * @throws EdadNoAcreditada si el sistema no sabe si el titular es NNA
      * @throws RepresentacionRequerida si un NNA pretende ejercer solo
+     *
+     * Las cuatro implementan `SolicitudRechazada`: un llamador que solo
+     * necesita mostrar "el módulo rechazó esto, y esto dice por qué" puede
+     * atraparlas todas con un único `catch (SolicitudRechazada $e)` en vez de
+     * los cuatro `catch` por nombre.
      */
     public function registrar(
         Model $titular,

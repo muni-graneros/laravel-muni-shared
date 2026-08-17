@@ -11,11 +11,30 @@ use Muni\Shared\Privacidad\Solicitante;
 use Muni\Shared\Privacidad\TipoDeSolicitud;
 
 /**
+ * @property string $sistema
+ * @property string $titular_type único que no se nulea al anonimizar: dice de
+ *                                qué tipo de sujeto trataba la fila, no quién
+ *                                era (ver la migración 2026_08_15_000002)
+ * @property int|null $titular_id null cuando el titular fue anonimizado
+ * @property string|null $titular_ref referencia opaca post-anonimización, para
+ *                                    seguir agrupando el caso sin volver a la
+ *                                    persona
  * @property TipoDeSolicitud $tipo
  * @property EstadoDeSolicitud $estado
+ * @property Carbon $recibida_en
  * @property Carbon $vence_en
+ * @property Carbon|null $resuelta_en
+ * @property string $detalle
+ * @property string|null $fundamento_resolucion
  * @property array<string, mixed> $verificacion_identidad
  * @property Solicitante $solicitante
+ * @property string|null $acreditacion_path ruta del documento que acredita la
+ *                                          representación; null cuando actúa
+ *                                          el propio titular o en filas
+ *                                          anteriores a esta columna
+ * @property int|null $user_registro_id
+ * @property int|null $user_resolucion_id
+ * @property string|null $respuesta_path
  */
 class Solicitud extends Model
 {

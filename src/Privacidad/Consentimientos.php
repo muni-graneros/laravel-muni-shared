@@ -23,7 +23,32 @@ class Consentimientos
         private readonly Edades $edades,
     ) {}
 
-    /** @param array<string, mixed> $opciones */
+    /**
+     * @param  array<string, mixed>  $opciones
+     *
+     * @throws FinalidadInvalida si la finalidad no admite consentimiento, o no
+     *                           admite tratar a un NNA
+     * @throws EdadNoAcreditada si el sistema no sabe si el titular es NNA
+     * @throws RepresentacionRequerida si un NNA pretende consentir solo
+     * @throws RepresentacionNoAcreditada si actúa un tercero sin documento
+     * @throws OpcionInvalida si `otorgado_por`, `codigo_texto` o
+     *                        `version_texto` traen un valor que el módulo
+     *                        no acepta
+     * @throws TextoNoPublicado si `texto` no apunta a un texto informativo
+     *                          existente de este sistema
+     *
+     * `EdadNoAcreditada`, `RepresentacionRequerida` y
+     * `RepresentacionNoAcreditada` implementan `SolicitudRechazada`, igual que
+     * en `Solicitudes::registrar()`: son la misma negativa —identidad, edad o
+     * representación sin acreditar— con el mismo mensaje, y se pueden atrapar
+     * con el mismo `catch (SolicitudRechazada $e)`. `FinalidadInvalida`,
+     * `OpcionInvalida` y `TextoNoPublicado` NO la implementan: no son una
+     * negativa a la petición de un titular, son el módulo rechazando una
+     * llamada mal armada del sistema adoptante (una finalidad que no
+     * corresponde, un valor fuera del vocabulario, una fila que no existe), y
+     * no hay ninguna persona al otro lado del mesón a quien mostrárselas como
+     * razón legal.
+     */
     public function otorgar(
         Model $titular,
         Finalidad $finalidad,

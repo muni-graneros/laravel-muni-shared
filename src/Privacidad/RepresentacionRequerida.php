@@ -19,5 +19,11 @@ use DomainException;
  *
  * Tampoco sirve el apoderado, y no es un olvido: un menor no puede otorgar
  * mandato, así que un apoderado suyo no existe jurídicamente.
+ *
+ * También implementa `SolicitudRechazada`: sigue siendo `DomainException`
+ * —quien la atrapaba así antes la sigue atrapando igual—, y además se puede
+ * atrapar junto con las demás negativas de `Solicitudes::registrar()` (y de
+ * `Consentimientos::otorgar()`, que la lanza por el mismo régimen de NNA) con
+ * un solo `catch (SolicitudRechazada $e)`.
  */
-class RepresentacionRequerida extends DomainException {}
+class RepresentacionRequerida extends DomainException implements SolicitudRechazada {}

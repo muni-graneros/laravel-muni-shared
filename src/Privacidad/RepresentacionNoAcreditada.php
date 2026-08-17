@@ -22,5 +22,11 @@ use DomainException;
  * categóricas, y meter la identidad de un tercero en ellas rompería ese
  * argumento (ver `Solicitante`). La identidad del representante vive en el
  * documento, que es donde ya vive.
+ *
+ * También implementa `SolicitudRechazada`: sigue siendo `DomainException`
+ * —quien la atrapaba así antes la sigue atrapando igual—, y además se puede
+ * atrapar junto con las demás negativas de `Solicitudes::registrar()` (y de
+ * `Consentimientos::otorgar()`, que la lanza por la misma exigencia) con un
+ * solo `catch (SolicitudRechazada $e)`.
  */
-class RepresentacionNoAcreditada extends DomainException {}
+class RepresentacionNoAcreditada extends DomainException implements SolicitudRechazada {}

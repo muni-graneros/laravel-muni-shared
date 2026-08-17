@@ -17,9 +17,14 @@ use Illuminate\Support\Carbon;
  * catálogo de organizaciones, y sus filas no se anonimizan cuando se
  * anonimiza a un vecino.
  *
+ * @property string $sistema
+ * @property string $nombre
  * @property string $rol
+ * @property string|null $contrato_path
  * @property Carbon|null $contrato_firmado_en
  * @property Carbon|null $contrato_vence_en
+ * @property string|null $pais
+ * @property string|null $medidas
  * @property bool $activo
  */
 class Encargado extends Model

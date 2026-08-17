@@ -4,9 +4,21 @@ namespace Muni\Shared\Privacidad\Modelos;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 
 /**
+ * @property string $sistema
+ * @property Carbon $detectada_en
+ * @property Carbon|null $vence_notificacion_agencia_en
+ * @property string $descripcion
+ * @property string|null $naturaleza
  * @property array<int, string>|null $categorias_afectadas
+ * @property int|null $titulares_estimados
+ * @property bool|null $riesgo_alto null = todavía sin evaluar, no "riesgo
+ *                                  descartado" (ver scopeSinEvaluarRiesgo())
+ * @property string|null $medidas
+ * @property Carbon|null $notificada_agencia_en
+ * @property Carbon|null $notificada_titulares_en
  */
 class Brecha extends Model
 {

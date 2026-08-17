@@ -12,11 +12,19 @@ use Muni\Shared\Privacidad\ExcepcionDatoSensible;
 use Muni\Shared\Privacidad\FinalidadInvalida;
 
 /**
+ * @property string $sistema
+ * @property string $codigo
+ * @property string $nombre
+ * @property string|null $descripcion
  * @property BaseLicitud $base_licitud
+ * @property string|null $norma_habilitante
+ * @property bool $es_accesoria
+ * @property int|null $plazo_retencion_meses
  * @property bool $admite_nna
  * @property ExcepcionDatoSensible|null $excepcion_dato_sensible
  * @property array<int, CategoriaDato>|null $categorias_datos
  * @property array<int, string>|null $destinatarios
+ * @property bool $activa
  */
 class Finalidad extends Model
 {

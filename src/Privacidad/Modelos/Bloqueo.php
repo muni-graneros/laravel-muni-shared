@@ -6,7 +6,22 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Carbon;
 
+/**
+ * @property string $sistema
+ * @property string|null $titular_type nullable desde el origen, a diferencia
+ *                                     de Solicitud (ver el docblock de la
+ *                                     migración que crea esta tabla)
+ * @property int|null $titular_id
+ * @property string|null $titular_ref
+ * @property int|null $finalidad_id null = todas las finalidades
+ * @property int|null $solicitud_id
+ * @property string $motivo
+ * @property Carbon $desde
+ * @property Carbon|null $levantado_en
+ * @property int|null $user_id
+ */
 class Bloqueo extends Model
 {
     protected $table = 'privacidad_bloqueos';

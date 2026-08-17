@@ -4,11 +4,22 @@ namespace Muni\Shared\Privacidad\Modelos;
 
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
+use Illuminate\Support\Carbon;
 use Muni\Shared\Privacidad\BitacoraInmutable;
 
 /**
+ * @property string $sistema
+ * @property string $evento
+ * @property string|null $titular_type nullable desde el origen: esta tabla
+ *                                     podía quedar huérfana antes que ninguna
+ *                                     otra (ver Bitacora::desvincular())
+ * @property int|null $titular_id
+ * @property string|null $titular_ref referencia opaca post-anonimización, para
+ *                                    seguir agrupando el caso sin volver a la
+ *                                    persona
  * @property array<string, mixed>|null $datos
- * @property string|null $titular_ref
+ * @property int|null $user_id
+ * @property Carbon $ocurrido_en
  */
 class EntradaBitacora extends Model
 {

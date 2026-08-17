@@ -4,8 +4,18 @@ namespace Muni\Shared\Privacidad\Modelos;
 
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Support\Carbon;
 use Muni\Shared\Privacidad\TextoInmutable;
 
+/**
+ * @property string $sistema
+ * @property string $codigo
+ * @property int $version
+ * @property string $contenido
+ * @property string $hash
+ * @property Carbon $vigente_desde
+ * @property Carbon|null $vigente_hasta null = versión vigente (ver scopeVigentes())
+ */
 class TextoInformativo extends Model
 {
     protected $table = 'privacidad_textos';

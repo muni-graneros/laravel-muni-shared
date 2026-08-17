@@ -14,6 +14,7 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
  * razona y si el titular puede pedir que la revise una persona.
  *
  * @property string $sistema
+ * @property int|null $finalidad_id
  * @property string $descripcion
  * @property string $logica
  * @property string $consecuencias

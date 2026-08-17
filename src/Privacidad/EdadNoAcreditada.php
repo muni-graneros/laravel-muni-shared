@@ -23,5 +23,11 @@ use DomainException;
  * describe es del dominio: la edad no está acreditada. Quien la atrape en un
  * panel debería ofrecer acreditarla —pedir el documento con la fecha de
  * nacimiento—, no reintentar.
+ *
+ * También implementa `SolicitudRechazada`: sigue siendo `DomainException`
+ * —quien la atrapaba así antes la sigue atrapando igual—, y además se puede
+ * atrapar junto con las demás negativas de `Solicitudes::registrar()` (y de
+ * `Consentimientos::otorgar()`, que la lanza por el mismo régimen de edad) con
+ * un solo `catch (SolicitudRechazada $e)`.
  */
-class EdadNoAcreditada extends DomainException {}
+class EdadNoAcreditada extends DomainException implements SolicitudRechazada {}
