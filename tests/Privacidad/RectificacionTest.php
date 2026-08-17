@@ -9,6 +9,7 @@ use Muni\Shared\Privacidad\Modelos\Solicitud;
 use Muni\Shared\Privacidad\Rectificaciones;
 use Muni\Shared\Privacidad\RectificacionNoPropagada;
 use Muni\Shared\Privacidad\ResolucionInvalida;
+use Muni\Shared\Privacidad\ResultadoDePropagacion;
 use Muni\Shared\Privacidad\ResultadoVerificacion;
 use Muni\Shared\Privacidad\Solicitudes;
 use Muni\Shared\Privacidad\TipoDeSolicitud;
@@ -35,11 +36,11 @@ it('aplica el cambio local y lo propaga al maestro', function () {
     {
         public function __construct(public array &$vistos) {}
 
-        public function propagar(Model $titular, array $cambios): bool
+        public function propagar(Model $titular, array $cambios): ResultadoDePropagacion
         {
             $this->vistos[] = $cambios;
 
-            return true;
+            return ResultadoDePropagacion::aceptada();
         }
     });
 
@@ -50,15 +51,22 @@ it('aplica el cambio local y lo propaga al maestro', function () {
         ->and(EntradaBitacora::where('evento', 'rectificacion.aplicada')->count())->toBe(1)
         // Solo se guardan los NOMBRES de los campos corregidos, nunca los valores.
         ->and(EntradaBitacora::where('evento', 'rectificacion.aplicada')->sole()->datos)
-        ->toBe(['solicitud_id' => $this->solicitud->id, 'campos' => ['nombre']]);
+        ->toBe([
+            'solicitud_id' => $this->solicitud->id,
+            'campos' => ['nombre'],
+            // Y que el maestro la aceptó de verdad, que es lo único que permite
+            // certificarle al titular que el dato quedó corregido en todas las
+            // ventanillas del ecosistema.
+            'propagacion' => ['estado' => 'aceptada', 'motivo' => null],
+        ]);
 });
 
 it('si el maestro rechaza el cambio, la solicitud NO queda resuelta', function () {
     app()->bind(PropagaRectificacion::class, fn () => new class implements PropagaRectificacion
     {
-        public function propagar(Model $titular, array $cambios): bool
+        public function propagar(Model $titular, array $cambios): ResultadoDePropagacion
         {
-            return false;
+            return ResultadoDePropagacion::rechazada();
         }
     });
 
@@ -91,7 +99,7 @@ it('si el propagador lanza, se trata igual que un rechazo y la excepción origin
     // con el dato que el maestro no aceptó.
     app()->bind(PropagaRectificacion::class, fn () => new class implements PropagaRectificacion
     {
-        public function propagar(Model $titular, array $cambios): bool
+        public function propagar(Model $titular, array $cambios): ResultadoDePropagacion
         {
             throw new RuntimeException('El maestro respondió 422.');
         }
@@ -174,7 +182,7 @@ it('si el registro de la falla también falla, igual sale la excepción original
     // del rechazo del maestro, y el motivo real se perdería.
     app()->bind(PropagaRectificacion::class, fn () => new class implements PropagaRectificacion
     {
-        public function propagar(Model $titular, array $cambios): bool
+        public function propagar(Model $titular, array $cambios): ResultadoDePropagacion
         {
             throw new RuntimeException('El maestro respondió 422.');
         }
@@ -205,9 +213,9 @@ it('sin propagador enlazado aplica solo local, para sistemas que no hablan con e
 it('si el maestro rechaza, la instancia en memoria del titular también queda con el valor original', function () {
     app()->bind(PropagaRectificacion::class, fn () => new class implements PropagaRectificacion
     {
-        public function propagar(Model $titular, array $cambios): bool
+        public function propagar(Model $titular, array $cambios): ResultadoDePropagacion
         {
-            return false;
+            return ResultadoDePropagacion::rechazada();
         }
     });
 
@@ -247,11 +255,11 @@ it('una rectificación sin fundamento no se registra como rechazo del maestro', 
     {
         public bool $visto = false;
 
-        public function propagar(Model $titular, array $cambios): bool
+        public function propagar(Model $titular, array $cambios): ResultadoDePropagacion
         {
             $this->visto = true;
 
-            return true;
+            return ResultadoDePropagacion::aceptada();
         }
     };
 
@@ -309,4 +317,42 @@ it('no se puede rectificar una solicitud sin un titular vigente', function () {
         ['nombre' => 'Rocío Paredes'],
         'Se verifica con cédula.',
     ))->toThrow(RectificacionNoPropagada::class);
+});
+
+it('sin propagador enlazado la evidencia dice que no correspondía propagar, no que el maestro aceptó', function () {
+    // Un sistema que no es modelo de lectura del maestro rectifica solo local y
+    // eso está bien. Lo que no está bien es que su evidencia se vea idéntica a
+    // la de un sistema que sí propagó: son dos afirmaciones distintas sobre el
+    // mismo derecho, y una fiscalización pregunta por la segunda.
+    app(Rectificaciones::class)->aplicar($this->solicitud, ['nombre' => 'Rocío Paredes'], 'Se verifica con cédula.');
+
+    $datos = EntradaBitacora::where('evento', 'rectificacion.aplicada')->sole()->datos;
+
+    expect($datos['propagacion']['estado'])->toBe('no_correspondia')
+        ->and($datos['propagacion']['motivo'])->toContain('no enlazó');
+});
+
+it('un sistema con maestro que decide no hablarle deja escrito su motivo', function () {
+    // El hueco que el tercer estado vino a cerrar, del lado de la
+    // rectificación: el sistema SÍ es modelo de lectura del maestro, y en
+    // tiempo de ejecución decide no contactarlo. Antes solo podía decirlo
+    // devolviendo `true`, o sea mintiendo.
+    app()->bind(PropagaRectificacion::class, fn () => new class implements PropagaRectificacion
+    {
+        public function propagar(Model $titular, array $cambios): ResultadoDePropagacion
+        {
+            return ResultadoDePropagacion::noCorrespondia('El titular no está dado de alta en el maestro de personas.');
+        }
+    });
+
+    app(Rectificaciones::class)->aplicar($this->solicitud, ['nombre' => 'Rocío Paredes'], 'Se verifica con cédula.');
+
+    // La rectificación local se aplica —no hay a quién propagarle— pero el
+    // registro no dice que el maestro la aceptó.
+    expect($this->titular->refresh()->nombre)->toBe('Rocío Paredes')
+        ->and(EntradaBitacora::where('evento', 'rectificacion.aplicada')->sole()->datos['propagacion'])
+        ->toBe([
+            'estado' => 'no_correspondia',
+            'motivo' => 'El titular no está dado de alta en el maestro de personas.',
+        ]);
 });

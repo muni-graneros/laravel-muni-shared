@@ -93,7 +93,9 @@ class Rectificaciones
             DB::transaction(function () use ($titular, $cambios, $solicitud, $fundamento): void {
                 $titular->forceFill($cambios)->save();
 
-                if ($this->propagacionRechazada($titular, $cambios)) {
+                $propagacion = $this->propagar($titular, $cambios);
+
+                if ($propagacion->laRechazoElMaestro()) {
                     // El rollback deja el dato viejo, que es honesto: el municipio no
                     // puede certificar una corrección que el maestro no aceptó.
                     throw new RectificacionNoPropagada(
@@ -107,9 +109,17 @@ class Rectificaciones
                 // bitácora no está cifrada, y volcar ahí el dato viejo/nuevo del
                 // titular duplicaría exactamente la información personal que este
                 // módulo existe para minimizar.
+                //
+                // Y qué pasó con el maestro, que antes no quedaba escrito: con
+                // `propagar()` devolviendo `bool`, esta fila decía lo mismo
+                // cuando el maestro había aceptado el cambio y cuando nadie
+                // había hablado con él. Son dos afirmaciones distintas sobre el
+                // mismo derecho y la segunda es la que una fiscalización
+                // pregunta.
                 $this->evidencia->registrar('rectificacion.aplicada', [
                     'solicitud_id' => $solicitud->getKey(),
                     'campos' => array_keys($cambios),
+                    'propagacion' => $propagacion->paraEvidencia(),
                 ], $titular);
             });
         } catch (Throwable $e) {
@@ -167,14 +177,21 @@ class Rectificaciones
     }
 
     /** @param array<string, mixed> $cambios */
-    private function propagacionRechazada(TitularDeDatos $titular, array $cambios): bool
+    private function propagar(TitularDeDatos $titular, array $cambios): ResultadoDePropagacion
     {
         // Un sistema que no es modelo de lectura del maestro no enlaza el
-        // contrato: para él la rectificación local es la definitiva.
+        // contrato: para él la rectificación local es la definitiva. Eso es
+        // «no correspondía propagar» y no un éxito, aunque el efecto sobre la
+        // transacción sea el mismo: la fila de evidencia tiene que poder
+        // distinguir un sistema sin maestro de uno que propagó de verdad, sin
+        // que haya que ir a averiguar qué tenía enlazado ese sistema aquel día.
         if (! app()->bound(PropagaRectificacion::class)) {
-            return false;
+            return ResultadoDePropagacion::noCorrespondia(
+                'Este sistema no enlazó Contratos\PropagaRectificacion: no es modelo de lectura '
+                .'del maestro de personas y la rectificación local es la definitiva.',
+            );
         }
 
-        return ! app(PropagaRectificacion::class)->propagar($titular, $cambios);
+        return app(PropagaRectificacion::class)->propagar($titular, $cambios);
     }
 }
