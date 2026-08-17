@@ -224,7 +224,52 @@ lectura hecha por un desarrollador para resolver una ambigüedad del esquema.
 
 ---
 
-## 11. Quién es el titular en un proyecto nuevo
+## 11. Tres salidas de datos que el RAT no nombra
+
+**Qué se decide:** declararlas en el RAT con su base de licitud y su plazo, o
+apagarlas.
+
+**Por qué aparece:** al construir el candado que hace cesar el tratamiento hubo
+que recorrer `app/` buscando por dónde salen datos de este sistema. Aparecieron
+tres salidas reales que **ninguna de las seis finalidades del RAT nombra**. Una
+finalidad no declarada es tratamiento sin base declarada, y el RAT es lo primero
+que pide una fiscalización.
+
+Las tres, con lo que cada una manda y a dónde — verificado leyendo el código, no
+el informe:
+
+1. **`personas:geocodificar` → OpenStreetMap (Nominatim), servicio de terceros
+   fuera de Chile.** Manda `dirección` y `sector`. **Es la más delicada de las
+   tres**: es una transferencia internacional de un dato personal —el domicilio
+   de una persona con discapacidad— a un tercero que el municipio no controla.
+   Atenúa, sin resolver: no viaja el nombre ni el RUT, y hay caché de 30 días
+   por dirección normalizada, así que cada calle se consulta una vez.
+2. **`Api\PersonaServicioController`** entrega fichas de personas por RUT a los
+   otros sistemas municipales. La finalidad `sincronizacion_maestro` declara la
+   salida (el write-through), **no esta entrada**: son dos comunicaciones
+   distintas y solo una está escrita.
+3. **El resumen por IA de las atenciones** manda el historial —observaciones
+   incluidas— al LLM. Corrijo de entrada un dato que circuló mal: **es el Ollama
+   local**, con la URL en configuración de servidor, no un proveedor externo. Es
+   la menos grave de las tres, pero sigue siendo una comunicación de datos de
+   salud a otro servicio, y sigue sin estar declarada.
+
+**Qué está puesto hoy:** las tres ya quedaron bajo el candado del cese (2 y 3;
+la 1 quedó fuera y está escrita como fuera de alcance). Pero cesar un
+tratamiento cuando alguien se opone **no es lo mismo que declararlo**: se puede
+cesar correctamente un tratamiento que nunca debió existir sin base.
+
+**Qué pasa si nadie decide:** el RAT sigue describiendo un sistema que hace
+menos de lo que hace. Es exactamente la clase de diferencia que una
+fiscalización encuentra sola.
+
+**Quién contesta:** jurídica para la base y el plazo de cada una. La decisión
+sobre la 1 puede además ser técnica: existe la opción de geocodificar contra un
+servicio propio y dejar de mandar domicilios afuera.
+
+---
+
+## 12. Quién es el titular en un proyecto nuevo
 
 **Qué se decide:** cuando el scaffold genere un sistema nuevo, ¿sobre qué modelo
 se implementa el titular de datos?
