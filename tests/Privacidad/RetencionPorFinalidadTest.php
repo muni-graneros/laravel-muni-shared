@@ -112,9 +112,10 @@ it('la evidencia dice qué finalidades se consideraron, no solo la que venció p
 
     $aplicada = EntradaBitacora::where('evento', 'retencion.aplicada')->sole();
 
-    expect($aplicada->datos)->toBe([
-        'finalidades' => ['agenda_citas' => 24, 'registro_comunal' => 120],
-    ]);
+    expect($aplicada->datos['finalidades'])->toBe(['agenda_citas' => 24, 'registro_comunal' => 120])
+        // Y nada más que eso, además de qué pasó con el maestro: la evidencia de
+        // una supresión no puede engordar con datos del titular.
+        ->and(array_keys($aplicada->datos))->toBe(['finalidades', 'propagacion']);
 });
 
 it('el comando muestra cuántas personas distintas hay y cuántas se suprimirían', function () {

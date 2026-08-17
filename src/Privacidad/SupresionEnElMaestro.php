@@ -50,22 +50,36 @@ final class SupresionEnElMaestro
     /**
      * @param  string  $documento  el del titular ANTES de anonimizar: después no
      *                             queda nada con qué encontrarlo en el maestro
+     * @return ResultadoDePropagacion qué pasó realmente, para que quien destruye
+     *                                lo deje escrito. Devolver `void` —como
+     *                                antes— obligaba a leer «no lanzó» como «el
+     *                                maestro aceptó», y esas dos cosas dejaron
+     *                                de ser la misma con el tercer estado.
      *
      * @throws SupresionNoPropagada si no hay declaración, o si el maestro
      *                              rechaza la supresión
      */
-    public function propagar(TitularDeDatos $titular, string $documento): void
+    public function propagar(TitularDeDatos $titular, string $documento): ResultadoDePropagacion
     {
         // Se repite la comprobación de arriba aunque quien llama ya la haya
         // hecho al empezar: este es el único punto por el que se destruye, y
         // una comprobación lejos del efecto envejece mal.
         $this->exigirDeclaracion();
 
-        if (! app(PropagaSupresion::class)->propagar($titular, $documento)) {
+        $resultado = app(PropagaSupresion::class)->propagar($titular, $documento);
+
+        if ($resultado->laRechazoElMaestro()) {
             throw new SupresionNoPropagada(
                 'El maestro de personas rechazó la supresión: no se destruye el dato local, '
                 .'porque la identidad seguiría viva y consultable por RUT en el registro federado.',
             );
         }
+
+        // «No correspondía propagar» NO aborta: quien sabe si hay a quién
+        // hablarle es el sistema adoptante, y negarse ahí dejaría sin poder
+        // suprimir a los que declararon supresión solo local. Lo que sí pasa es
+        // que la respuesta viaja de vuelta con su motivo, para que la evidencia
+        // no diga que el maestro aceptó algo que nunca vio.
+        return $resultado;
     }
 }

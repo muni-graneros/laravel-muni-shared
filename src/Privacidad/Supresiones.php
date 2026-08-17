@@ -65,6 +65,14 @@ use Throwable;
  * - **Que la destrucción sea irreversible en el maestro federado.** Eso depende
  *   de qué haga el maestro con la baja (ver el pendiente BLOQUEANTE del spec de
  *   pendientes: hoy el maestro OCULTA al suprimido en vez de suprimirlo).
+ * - **Que se haya hablado con el maestro.** La supresión total puede terminar
+ *   bien sin que nadie contactara el registro federado: el sistema adoptante
+ *   puede contestar `ResultadoDePropagacion::noCorrespondia()`, y eso NO aborta
+ *   —quien sabe si hay a quién hablarle es él—. Lo que el servicio garantiza es
+ *   que la diferencia no se pierda: viaja en `ResultadoDeSupresion::$propagacion`
+ *   y queda escrita en la evidencia `supresion.aplicada`. Un panel que le vaya a
+ *   decir a un vecino «sus datos ya no están en el ecosistema» tiene que mirarla
+ *   antes.
  */
 class Supresiones
 {
@@ -249,14 +257,14 @@ class Supresiones
             // registrada: «se pidió la supresión, se intentó, y el registro
             // federado la rechazó» es exactamente lo que hay que poder mostrar
             // cuando el titular pregunte por qué sus datos siguen ahí.
-            $this->maestro->propagar($titular, $documento);
+            $propagacion = $this->maestro->propagar($titular, $documento);
 
             // La marca de proceso que consulta el observador `saved` del sistema
             // adoptante para NO empujar al maestro lo que se escribe acá: sin
             // ella, anonimizar() da de alta en el registro central a quien se
             // acaba de suprimir.
             $barrido = SupresionEnCurso::durante(fn (): ResultadoDesvinculacion => DB::transaction(
-                function () use ($solicitud, $titular, $evaluacion, $fundamento, $respuestaPath): ResultadoDesvinculacion {
+                function () use ($solicitud, $titular, $evaluacion, $fundamento, $respuestaPath, $propagacion): ResultadoDesvinculacion {
                     // La resolución se sella ANTES del barrido, y no después,
                     // para que el barrido la alcance: el fundamento es la
                     // respuesta escrita al titular y puede llevar su nombre, su
@@ -279,9 +287,15 @@ class Supresiones
                     // vivo al lado de las que dicen titular_ref, en el mismo
                     // instante: el join de dos saltos que la anonimización
                     // existe para cortar.
+                    // Con `propagacion`: es lo que hay que poder mostrar cuando
+                    // el titular vuelva a preguntar por qué su RUT sigue
+                    // apareciendo en otra ventanilla. Sin ella, la evidencia de
+                    // una supresión propagada y la de una que nadie propagó eran
+                    // exactamente la misma fila.
                     $this->evidencia->registrar('supresion.aplicada', [
                         'solicitud_id' => $solicitud->getKey(),
                         'finalidades' => $evaluacion->codigosQueCesan(),
+                        'propagacion' => $propagacion->paraEvidencia(),
                     ], $titular);
 
                     return $this->bitacora->desvincular($titular);
@@ -299,7 +313,12 @@ class Supresiones
         $titular->refresh();
         $solicitud->refresh();
 
-        return new ResultadoDeSupresion(total: true, evaluacion: $evaluacion, barrido: $barrido);
+        return new ResultadoDeSupresion(
+            total: true,
+            evaluacion: $evaluacion,
+            barrido: $barrido,
+            propagacion: $propagacion,
+        );
     }
 
     /**

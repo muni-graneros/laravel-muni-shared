@@ -107,6 +107,20 @@ class AplicarRetencionCommand extends Command
             .' — solo quienes vencieron en TODAS las finalidades con plazo.'
         );
 
+        // Lo que la línea de arriba NO dice por sí sola: cuántas de esas
+        // supresiones se hicieron sin que nadie hablara con el maestro de
+        // personas. Con la respuesta de la propagación reducida a un `bool`,
+        // «suprimidas: 2483» se leía igual en un sistema que propaga y en uno
+        // que destruye local y deja la identidad viva en el registro federado.
+        // Solo aparece cuando hay alguna: un aviso en todas las corridas de
+        // todos los sistemas se vuelve ruido de fondo.
+        if ($resumen->sinPropagarAlMaestro > 0) {
+            $this->line(
+                "Suprimidas sin hablar con el maestro de personas: {$resumen->sinPropagarAlMaestro} "
+                .'— el motivo que declaró el sistema queda en la evidencia de cada supresión.',
+            );
+        }
+
         $this->avisarSiNoSePropagaAlMaestro();
 
         return self::SUCCESS;

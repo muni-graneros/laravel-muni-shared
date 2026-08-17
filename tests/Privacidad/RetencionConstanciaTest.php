@@ -7,6 +7,7 @@ use Muni\Shared\Privacidad\Contratos\ResuelveTitularesVencidos;
 use Muni\Shared\Privacidad\Contratos\TitularDeDatos;
 use Muni\Shared\Privacidad\Modelos\EntradaBitacora;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
+use Muni\Shared\Privacidad\ResultadoDePropagacion;
 use Muni\Shared\Privacidad\SupresionNoPropagada;
 use Muni\Shared\Privacidad\SupresionSoloLocal;
 use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
@@ -77,9 +78,11 @@ it('una corrida que revienta a mitad deja constancia de lo que alcanzó a hacer'
     {
         private int $vistos = 0;
 
-        public function propagar(TitularDeDatos $titular, string $documento): bool
+        public function propagar(TitularDeDatos $titular, string $documento): ResultadoDePropagacion
         {
-            return ++$this->vistos < 3;
+            return ++$this->vistos < 3
+                ? ResultadoDePropagacion::aceptada()
+                : ResultadoDePropagacion::rechazada();
         }
     });
 

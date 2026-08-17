@@ -6,7 +6,9 @@ use Muni\Shared\Privacidad\BaseLicitud;
 use Muni\Shared\Privacidad\Contratos\PropagaSupresion;
 use Muni\Shared\Privacidad\Contratos\ResuelveTitularesVencidos;
 use Muni\Shared\Privacidad\Contratos\TitularDeDatos;
+use Muni\Shared\Privacidad\Modelos\EntradaBitacora;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
+use Muni\Shared\Privacidad\ResultadoDePropagacion;
 use Muni\Shared\Privacidad\SupresionEnCurso;
 use Muni\Shared\Privacidad\SupresionNoPropagada;
 use Muni\Shared\Privacidad\SupresionSoloLocal;
@@ -157,7 +159,7 @@ it('propaga la supresión con el documento previo, antes de destruir nada local'
 
         public ?bool $contextoActivo = null;
 
-        public function propagar(TitularDeDatos $titular, string $documento): bool
+        public function propagar(TitularDeDatos $titular, string $documento): ResultadoDePropagacion
         {
             $this->documento = $documento;
             $this->nombreAlPropagar = $titular->titularNombre();
@@ -166,7 +168,7 @@ it('propaga la supresión con el documento previo, antes de destruir nada local'
             // dentro del contexto su propio empuje quedaría descartado.
             $this->contextoActivo = SupresionEnCurso::activa();
 
-            return true;
+            return ResultadoDePropagacion::aceptada();
         }
     };
 
@@ -183,9 +185,9 @@ it('propaga la supresión con el documento previo, antes de destruir nada local'
 it('si el maestro rechaza la supresión no se destruye el dato local', function () {
     app()->instance(PropagaSupresion::class, new class implements PropagaSupresion
     {
-        public function propagar(TitularDeDatos $titular, string $documento): bool
+        public function propagar(TitularDeDatos $titular, string $documento): ResultadoDePropagacion
         {
-            return false;
+            return ResultadoDePropagacion::rechazada();
         }
     });
 
@@ -199,4 +201,79 @@ it('si el maestro rechaza la supresión no se destruye el dato local', function 
 
     expect($this->vencida->nombre)->toBe('Rocío Paredes')
         ->and($this->vencida->diagnostico)->toBe('dato sensible de salud');
+});
+
+it('«no correspondía propagar» destruye lo local, pero NO queda escrito como una aceptación del maestro', function () {
+    // El defecto que este estado vino a cerrar, entrando por donde entró en la
+    // adopción real: `PropagaSupresionAlMaestro` devolvía `true` sin contactar
+    // a nadie cuando el driver de la API no era `http`. La supresión local es
+    // correcta —quien decide que no hay a quién hablarle es el sistema, no el
+    // módulo— pero la evidencia no puede decir que el maestro aceptó.
+    app()->instance(PropagaSupresion::class, new class implements PropagaSupresion
+    {
+        public function propagar(TitularDeDatos $titular, string $documento): ResultadoDePropagacion
+        {
+            return ResultadoDePropagacion::noCorrespondia('El driver de la API de personas no es http en este ambiente.');
+        }
+    });
+
+    app(AplicarRetencion::class)->ejecutar(simulacion: false);
+
+    $aplicada = EntradaBitacora::where('evento', 'retencion.aplicada')->sole();
+    $constancia = EntradaBitacora::where('evento', 'retencion.constancia')->orderByDesc('id')->first();
+
+    expect($this->vencida->refresh()->nombre)->toBe('ANONIMIZADO')
+        ->and($aplicada->datos['propagacion'])->toBe([
+            'estado' => 'no_correspondia',
+            'motivo' => 'El driver de la API de personas no es http en este ambiente.',
+        ])
+        // Y la corrida entera lo dice en su agregado, que es lo que alguien lee
+        // para responderle a la Agencia cuántas supresiones se propagaron.
+        ->and($constancia->datos['titulares'])->toBe(1)
+        ->and($constancia->datos['sin_propagar_al_maestro'])->toBe(1);
+});
+
+it('cuando el maestro sí acepta, la evidencia dice otra cosa', function () {
+    // La otra mitad del test de arriba: si alguien colapsa los dos estados en
+    // uno, estas dos evidencias se vuelven idénticas y el defecto revive.
+    app()->instance(PropagaSupresion::class, new class implements PropagaSupresion
+    {
+        public function propagar(TitularDeDatos $titular, string $documento): ResultadoDePropagacion
+        {
+            return ResultadoDePropagacion::aceptada();
+        }
+    });
+
+    app(AplicarRetencion::class)->ejecutar(simulacion: false);
+
+    $constancia = EntradaBitacora::where('evento', 'retencion.constancia')->orderByDesc('id')->first();
+
+    expect(EntradaBitacora::where('evento', 'retencion.aplicada')->sole()->datos['propagacion'])
+        ->toBe(['estado' => 'aceptada', 'motivo' => null])
+        ->and($constancia->datos['sin_propagar_al_maestro'])->toBe(0);
+});
+
+it('un sistema que declaró supresión solo local deja escrito que nadie habló con el maestro', function () {
+    // `SupresionSoloLocal` es la declaración de entrada, y es legítima: este
+    // sistema no es modelo de lectura del maestro. Lo que no puede es contarse
+    // como aceptación —no hay maestro que haya aceptado nada— porque entonces
+    // la evidencia de los ocho sistemas dice lo mismo hablen o no hablen.
+    app()->bind(PropagaSupresion::class, SupresionSoloLocal::class);
+
+    app(AplicarRetencion::class)->ejecutar(simulacion: false);
+
+    expect(EntradaBitacora::where('evento', 'retencion.aplicada')->sole()->datos['propagacion']['estado'])
+        ->toBe('no_correspondia')
+        ->and(EntradaBitacora::where('evento', 'retencion.aplicada')->sole()->datos['propagacion']['motivo'])
+        ->toContain('no es modelo de lectura del maestro');
+});
+
+it('el comando dice cuántas supresiones se hicieron sin hablar con el maestro', function () {
+    // El otro sitio de consumo, y el que mira una persona: una corrida que
+    // suprimió sin propagar no puede verse igual que una que propagó.
+    app()->bind(PropagaSupresion::class, SupresionSoloLocal::class);
+
+    $this->artisan('privacidad:aplicar-retencion --ejecutar')
+        ->expectsOutputToContain('Suprimidas sin hablar con el maestro de personas: 1')
+        ->assertSuccessful();
 });

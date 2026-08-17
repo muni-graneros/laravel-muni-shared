@@ -75,9 +75,16 @@ class AplicarRetencion
             return new ResumenDeRetencion($porFinalidad, $plazos, count($conteo), count($suprimibles), 0);
         }
 
-        $suprimidos = $this->suprimir($finalidades->first(), array_flip($suprimibles), $plazos);
+        [$suprimidos, $sinPropagar] = $this->suprimir($finalidades->first(), array_flip($suprimibles), $plazos);
 
-        return new ResumenDeRetencion($porFinalidad, $plazos, count($conteo), count($suprimibles), $suprimidos);
+        return new ResumenDeRetencion(
+            $porFinalidad,
+            $plazos,
+            count($conteo),
+            count($suprimibles),
+            $suprimidos,
+            $sinPropagar,
+        );
     }
 
     /**
@@ -137,8 +144,11 @@ class AplicarRetencion
      *
      * @param  array<string, int>  $suprimibles  claves de la intersección
      * @param  array<string, int>  $plazos  código => meses, para la evidencia
+     * @return array{0: int, 1: int} cuántos se suprimieron y cuántos de ellos se
+     *                               destruyeron SIN que nadie hablara con el
+     *                               maestro de personas
      */
-    private function suprimir(Finalidad $finalidad, array $suprimibles, array $plazos): int
+    private function suprimir(Finalidad $finalidad, array $suprimibles, array $plazos): array
     {
         // Token por corrida, aleatorio puro. Sirve para saber qué constancias
         // pertenecen a la misma corrida —sin él, tres constancias son
@@ -148,7 +158,19 @@ class AplicarRetencion
         $corrida = Str::random(16);
         $lote = max(1, (int) config('privacidad.retencion.lote', 100));
 
-        $totales = ['titulares' => 0, 'filas' => 0, 'archivos_suprimidos' => 0, 'archivos_no_encontrados' => 0];
+        // `sin_propagar_al_maestro` cuenta las supresiones en que la propagación
+        // contestó «no correspondía»: el dato local se destruyó y nadie habló
+        // con el registro federado. Va en el agregado de la corrida —no en la
+        // constancia por titular, que sería otra vez el canal de correlación
+        // del pendiente 5-ter— porque es el número que hay que mirar antes de
+        // decir «este sistema propaga sus supresiones».
+        $totales = [
+            'titulares' => 0,
+            'filas' => 0,
+            'archivos_suprimidos' => 0,
+            'archivos_no_encontrados' => 0,
+            'sin_propagar_al_maestro' => 0,
+        ];
         $publicado = 0;
         $termino = false;
 
@@ -158,9 +180,29 @@ class AplicarRetencion
                     continue;
                 }
 
-                $barrido = $this->aplicarA($titular, $plazos);
+                // El documento se lee ANTES de tocar nada: después de anonimizar
+                // no queda con qué identificar a esta persona en el maestro.
+                $documento = $titular->titularDocumento();
+
+                // Primero el maestro, después lo local, y este orden es lo
+                // contrario del de `Rectificaciones` a propósito. Allá la
+                // propagación va dentro de la transacción porque un rechazo se
+                // deshace con un rollback. Acá no: la purga borra archivos del
+                // disco y ningún rollback los devuelve. Si el maestro rechaza
+                // después de haber purgado, el titular queda destruido
+                // localmente y vivo en el registro federado, que es exactamente
+                // el defecto. Al revés —maestro primero— el peor caso es un
+                // titular suprimido en el maestro y todavía completo acá, que la
+                // siguiente corrida vuelve a intentar.
+                $propagacion = $this->maestro->propagar($titular, $documento);
+
+                $barrido = $this->aplicarA($titular, $plazos, $propagacion);
 
                 $totales['titulares']++;
+
+                if (! $propagacion->seHabloConElMaestro()) {
+                    $totales['sin_propagar_al_maestro']++;
+                }
 
                 if ($barrido !== null) {
                     $totales['filas'] += $barrido->filas;
@@ -205,11 +247,11 @@ class AplicarRetencion
             }
         }
 
-        return $totales['titulares'];
+        return [$totales['titulares'], $totales['sin_propagar_al_maestro']];
     }
 
     /**
-     * @param  array{titulares: int, filas: int, archivos_suprimidos: int, archivos_no_encontrados: int}  $totales
+     * @param  array{titulares: int, filas: int, archivos_suprimidos: int, archivos_no_encontrados: int, sin_propagar_al_maestro: int}  $totales
      * @param  array<string, int>  $plazos
      */
     private function publicarConstancia(string $corrida, array $totales, array $plazos, bool $completa): void
@@ -225,29 +267,19 @@ class AplicarRetencion
         ]);
     }
 
-    /** @param array<string, int> $plazos */
-    private function aplicarA(TitularDeDatos $titular, array $plazos): ?ResultadoDesvinculacion
+    /**
+     * Todo lo local de una supresión. La propagación al maestro ya ocurrió: su
+     * resultado llega para quedar escrito en la evidencia, no para decidir nada.
+     *
+     * @param  array<string, int>  $plazos
+     */
+    private function aplicarA(TitularDeDatos $titular, array $plazos, ResultadoDePropagacion $propagacion): ?ResultadoDesvinculacion
     {
-        // El documento se lee ANTES de tocar nada: después de anonimizar no
-        // queda con qué identificar a esta persona en el maestro.
-        $documento = $titular->titularDocumento();
-
-        // Primero el maestro, después lo local, y este orden es lo contrario del
-        // de `Rectificaciones` a propósito. Allá la propagación va dentro de la
-        // transacción porque un rechazo se deshace con un rollback. Acá no: la
-        // purga borra archivos del disco y ningún rollback los devuelve. Si el
-        // maestro rechaza después de haber purgado, el titular queda destruido
-        // localmente y vivo en el registro federado, que es exactamente el
-        // defecto. Al revés —maestro primero— el peor caso es un titular
-        // suprimido en el maestro y todavía completo acá, que la siguiente
-        // corrida vuelve a intentar.
-        $this->maestro->propagar($titular, $documento);
-
         // Todo lo local, con la marca de supresión puesta: el observador `saved`
         // del sistema adoptante la consulta para NO despachar el write-through
         // al maestro (paso obligatorio de adopción), y `SincronizarAlMaestro` la
         // estampa en el job por si el observador igual lo despachó.
-        return SupresionEnCurso::durante(function () use ($titular, $plazos): ?ResultadoDesvinculacion {
+        return SupresionEnCurso::durante(function () use ($titular, $plazos, $propagacion): ?ResultadoDesvinculacion {
             // El orden importa: primero se borra lo sensible, después se
             // anonimiza. Al revés, el registro anonimizado podría conservar el
             // archivo sensible sin nadie a quien asociarlo para borrarlo después.
@@ -261,7 +293,7 @@ class AplicarRetencion
             // load-bearing incluso con la transacción: si algo falla después de
             // purgar, el archivo ya no está aunque la fila vuelva a su estado
             // anterior.
-            return DB::transaction(function () use ($titular, $plazos): ?ResultadoDesvinculacion {
+            return DB::transaction(function () use ($titular, $plazos, $propagacion): ?ResultadoDesvinculacion {
                 $titular->purgarDatosSensibles();
                 $titular->anonimizar();
 
@@ -303,8 +335,17 @@ class AplicarRetencion
                 // responder «¿y las otras finalidades que alcanzaban a esta
                 // persona?», que es justo lo que la versión anterior no
                 // preguntaba antes de destruir.
+                //
+                // Y qué pasó con el maestro de personas, que hasta ahora no se
+                // escribía en ninguna parte: mientras `propagar()` devolvía
+                // `bool`, «no lanzó» era lo único que quedaba, y eso se leía
+                // como «el maestro aceptó» aunque nadie hubiera hablado con él.
+                // La evidencia de una supresión tiene que poder distinguir las
+                // dos cosas sin ir a mirar qué tenía enlazado ese sistema aquel
+                // día.
                 $this->evidencia->registrar('retencion.aplicada', [
                     'finalidades' => $plazos,
+                    'propagacion' => $propagacion->paraEvidencia(),
                 ], $titular instanceof Model ? $titular : null);
 
                 // Un titular que no es Model no tiene morph con el que buscar sus

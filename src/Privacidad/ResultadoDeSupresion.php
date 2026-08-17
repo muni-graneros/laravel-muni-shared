@@ -18,11 +18,27 @@ final readonly class ResultadoDeSupresion
      * @param  ?ResultadoDesvinculacion  $barrido  el corte del vínculo con el
      *                                             módulo, solo en la total
      * @param  int  $finalidadesCesadas  cuántos bloqueos definitivos quedaron
+     * @param  ?ResultadoDePropagacion  $propagacion  qué pasó en el maestro de
+     *                                                personas. **null en la
+     *                                                acogida parcial**, y no por
+     *                                                omisión: la parcial no
+     *                                                destruye nada, así que no
+     *                                                hay ninguna baja que
+     *                                                propagar. En la total nunca
+     *                                                es null, y hay que mirarla
+     *                                                antes de decirle a nadie
+     *                                                que sus datos ya no están
+     *                                                en el ecosistema:
+     *                                                `loAceptoElMaestro()`
+     *                                                falso significa que la
+     *                                                identidad puede seguir viva
+     *                                                en el registro federado.
      */
     public function __construct(
         public bool $total,
         public EvaluacionDeSupresion $evaluacion,
         public ?ResultadoDesvinculacion $barrido = null,
         public int $finalidadesCesadas = 0,
+        public ?ResultadoDePropagacion $propagacion = null,
     ) {}
 }

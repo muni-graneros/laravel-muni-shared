@@ -13,6 +13,7 @@ use Muni\Shared\Privacidad\Modelos\Bloqueo;
 use Muni\Shared\Privacidad\Modelos\EntradaBitacora;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
 use Muni\Shared\Privacidad\ResolucionInvalida;
+use Muni\Shared\Privacidad\ResultadoDePropagacion;
 use Muni\Shared\Privacidad\ResultadoVerificacion;
 use Muni\Shared\Privacidad\Solicitudes;
 use Muni\Shared\Privacidad\SupresionEnCurso;
@@ -231,13 +232,13 @@ it('propaga al maestro con el documento previo, fuera del contexto de supresión
 
         public ?bool $contextoActivo = null;
 
-        public function propagar(TitularDeDatos $titular, string $documento): bool
+        public function propagar(TitularDeDatos $titular, string $documento): ResultadoDePropagacion
         {
             $this->documento = $documento;
             $this->nombreAlPropagar = $titular->titularNombre();
             $this->contextoActivo = SupresionEnCurso::activa();
 
-            return true;
+            return ResultadoDePropagacion::aceptada();
         }
     };
 
@@ -254,9 +255,9 @@ it('propaga al maestro con el documento previo, fuera del contexto de supresión
 it('si el maestro rechaza la supresión no se destruye nada local ni se acoge la solicitud', function () {
     app()->instance(PropagaSupresion::class, new class implements PropagaSupresion
     {
-        public function propagar(TitularDeDatos $titular, string $documento): bool
+        public function propagar(TitularDeDatos $titular, string $documento): ResultadoDePropagacion
         {
-            return false;
+            return ResultadoDePropagacion::rechazada();
         }
     });
 
@@ -329,4 +330,64 @@ it('una solicitud cuyo titular ya no está no se puede suprimir', function () {
 
     expect(fn () => app(Supresiones::class)->aplicar($this->solicitud->fresh(), 'Se acoge.'))
         ->toThrow(ResolucionInvalida::class, 'titular');
+});
+
+it('una supresión que nadie propagó no se le puede presentar al titular como aceptada por el maestro', function () {
+    // El sitio de consumo que más importa: lo que devuelve `aplicar()` es lo
+    // que un panel convierte en la frase «sus datos fueron suprimidos». Si el
+    // tercer estado se leyera como éxito, esa frase se le diría a un vecino
+    // cuya identidad sigue viva y consultable por RUT en el registro federado.
+    app()->instance(PropagaSupresion::class, new class implements PropagaSupresion
+    {
+        public function propagar(TitularDeDatos $titular, string $documento): ResultadoDePropagacion
+        {
+            return ResultadoDePropagacion::noCorrespondia('El driver de la API de personas no es http en este ambiente.');
+        }
+    });
+
+    $resultado = app(Supresiones::class)->aplicar($this->solicitud, 'Se acoge.');
+
+    expect($resultado->total)->toBeTrue()
+        // Se suprimió de verdad acá...
+        ->and(($this->comoQuedoEnLaBase)()->nombre)->toBe('ANONIMIZADO')
+        // ...y el resultado dice, sin que haya que deducirlo, que el maestro no
+        // aceptó nada porque nadie le habló.
+        ->and($resultado->propagacion->loAceptoElMaestro())->toBeFalse()
+        ->and($resultado->propagacion->seHabloConElMaestro())->toBeFalse()
+        ->and($resultado->propagacion->motivo)->toContain('no es http')
+        ->and(EntradaBitacora::where('evento', 'supresion.aplicada')->sole()->datos['propagacion'])
+        ->toBe([
+            'estado' => 'no_correspondia',
+            'motivo' => 'El driver de la API de personas no es http en este ambiente.',
+        ]);
+});
+
+it('cuando el maestro acepta la baja, el resultado y la evidencia lo dicen', function () {
+    // La mitad que hace fallar cualquier intento de colapsar los dos estados.
+    app()->instance(PropagaSupresion::class, new class implements PropagaSupresion
+    {
+        public function propagar(TitularDeDatos $titular, string $documento): ResultadoDePropagacion
+        {
+            return ResultadoDePropagacion::aceptada();
+        }
+    });
+
+    $resultado = app(Supresiones::class)->aplicar($this->solicitud, 'Se acoge.');
+
+    expect($resultado->propagacion->loAceptoElMaestro())->toBeTrue()
+        ->and(EntradaBitacora::where('evento', 'supresion.aplicada')->sole()->datos['propagacion'])
+        ->toBe(['estado' => 'aceptada', 'motivo' => null]);
+});
+
+it('la acogida parcial no trae propagación, porque no hay ninguna baja que propagar', function () {
+    // Y es null y no «aceptada»: la parcial no destruye nada, así que nada
+    // viajó al maestro. Devolver un resultado de propagación acá sería inventar
+    // una conversación que no ocurrió.
+    ($this->porFuncionLegal)();
+    ($this->porConsentimiento)();
+
+    $resultado = app(Supresiones::class)->aplicar($this->solicitud, 'Se acoge lo que procede.');
+
+    expect($resultado->total)->toBeFalse()
+        ->and($resultado->propagacion)->toBeNull();
 });

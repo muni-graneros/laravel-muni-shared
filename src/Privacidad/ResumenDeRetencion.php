@@ -18,6 +18,7 @@ final readonly class ResumenDeRetencion
      * @param  int  $personas  personas distintas vencidas en AL MENOS una finalidad
      * @param  int  $suprimibles  personas vencidas en TODAS: las únicas que corresponde suprimir
      * @param  int  $suprimidos  personas efectivamente suprimidas (0 en simulación; menor que $suprimibles si la corrida se cortó)
+     * @param  int  $sinPropagarAlMaestro  cuántas de esas se destruyeron sin que nadie hablara con el maestro de personas (la propagación contestó «no correspondía»)
      */
     public function __construct(
         public array $porFinalidad,
@@ -25,6 +26,7 @@ final readonly class ResumenDeRetencion
         public int $personas,
         public int $suprimibles,
         public int $suprimidos,
+        public int $sinPropagarAlMaestro = 0,
     ) {}
 
     /**
