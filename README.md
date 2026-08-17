@@ -141,9 +141,9 @@ corrida: `archivos_no_encontrados` alto con `archivos_suprimidos` en cero.
 | Contrato | Obligatorio | Qué resuelve |
 |---|---|---|
 | `TitularDeDatos` | Sí | Cómo se exporta, purga y anonimiza a una persona, qué campos (`camposRectificables()`) puede corregir mediante el derecho de rectificación —no es un cheque en blanco sobre todo el registro— y su fecha de nacimiento (`fechaNacimientoTitular()`), de la que depende el régimen reforzado de NNA |
-| `ResuelveTitularesVencidos` | Solo si hay retención | Desde cuándo se trata a un titular bajo cada finalidad |
+| `ResuelveTitularesVencidos` | Sí | Desde cuándo se trata a un titular bajo cada finalidad. Decía «solo si hay retención» y ya no alcanza: `Supresiones` lo consulta para saber si el plazo de una finalidad por función legal todavía corre para el titular que pide la supresión. Con el enlace por defecto (`NingunTitularVencido`) nadie está vencido nunca, así que un sistema sin resolvedor **no puede acoger ninguna supresión a petición** sobre finalidades por función legal |
 | `VerificadorIdentidad` | Por convención | Cómo se acredita que el solicitante es el titular. El paquete **no lo resuelve del contenedor**: `Solicitudes::registrar()` recibe un `ResultadoVerificacion` ya construido. Es el código que llama —la acción del panel, el mesón— el que debe verificar con él antes de registrar; implementarlo y no usarlo no protege nada |
-| `PropagaSupresion` | **Sí** (una de las dos formas) | Qué debe pasar en el maestro de personas cuando este sistema suprime a un titular. Sin enlace, `AplicarRetencion` **se niega a ejecutar**. Un sistema que no es modelo de lectura del maestro lo declara enlazando `SupresionSoloLocal`. Mismos requisitos que `PropagaRectificacion`: síncrono, `false` o lanzar significan «no se propagó», y entonces no se destruye nada local |
+| `PropagaSupresion` | **Sí** (una de las dos formas) | Qué debe pasar en el maestro de personas cuando este sistema suprime a un titular. Sin enlace, `AplicarRetencion` y `Supresiones` **se niegan a ejecutar** —la misma exigencia, en una sola clase (`SupresionEnElMaestro`), para que las dos no puedan divergir—. Un sistema que no es modelo de lectura del maestro lo declara enlazando `SupresionSoloLocal`. Mismos requisitos que `PropagaRectificacion`: síncrono, `false` o lanzar significan «no se propagó», y entonces no se destruye nada local |
 | `PropagaRectificacion` | Solo si es modelo de lectura del maestro | Que la rectificación no la pise la próxima sincronización. **Debe ser síncrono**: tiene que conocer la respuesta del maestro antes de devolver. Despachar un job en cola y devolver `true` no es una implementación válida —informa éxito antes de que el maestro haya visto nada—. Devolver `false` o lanzar significan lo mismo: no se propagó |
 | `RegistroDeEvidencia` | No | Sustituir la bitácora propia por la del sistema |
 
@@ -305,6 +305,75 @@ los tipos que no dan derecho a la copia y deja la entrega en `privacidad_bitacor
 `paraTitular()` no verifica nada ni registra nada: cablearla a una acción que
 recibe un id del request es un IDOR sin rastro.
 
+### Atender una supresión: `Supresiones`, y por qué no es incondicional
+
+```php
+$resultado = app(Supresiones::class)->aplicar($solicitud, $fundamento, $respuestaPath);
+```
+
+Acoger una solicitud de supresión con `Solicitudes::acoger()` a secas sella la
+fila como resuelta y **no suprime nada**. Eso no es un cabo suelto: es el peor
+estado posible: la solicitud queda cerrada, el plazo legal deja de correr y el
+municipio tiene constancia escrita de haber cumplido un derecho que no cumplió.
+La entrada correcta es `Supresiones::aplicar()`.
+
+Lo que ese servicio hace, y no es «borrar todo»: la supresión por retención es
+unilateral —venció el plazo que el propio municipio declaró—, pero la supresión
+a petición **es legítimamente rechazable**. Si el dato se trata por función
+legal u obligación legal con norma habilitante y su plazo de conservación sigue
+corriendo, el derecho no procede sobre esa finalidad. De ahí los tres
+desenlaces:
+
+| Situación | Qué hace | Estado de la solicitud |
+|---|---|---|
+| Ninguna finalidad obliga a conservar | Purga los sensibles, anonimiza, corta el vínculo con las cinco tablas del módulo y borra los documentos del disco | Acogida |
+| Alguna obliga y alguna no | **No destruye nada**; deja un bloqueo definitivo por cada finalidad en que sí procede | Acogida parcial |
+| Todas obligan a conservar | Lanza `SupresionNoProcede`, con la norma y el plazo en el mensaje | Queda **en trámite** |
+
+Tres cosas que hay que saber antes de cablearlo a un panel:
+
+- **La acogida parcial es un cese, no un borrado parcial.** El módulo no sabe
+  —no puede saber— qué columna del sistema adoptante pertenece a qué finalidad,
+  así que borrar «lo de la finalidad que cesa» sería adivinar sobre datos que la
+  norma manda conservar. Lo que deja son `privacidad_bloqueos` vigentes; que el
+  tratamiento cese de verdad **depende de que el sistema los consulte**
+  (`Bloqueos::vigente($titular, $finalidad)`), igual que cualquier otro bloqueo.
+- **El módulo no rechaza por su cuenta.** Cuando no procede, truena y deja la
+  solicitud en trámite: rechazar es una resolución fundada que le responde a un
+  ciudadano y que firma una persona. `Supresiones::evaluar($titular)` calcula lo
+  mismo sin efectos, para que el panel pueda mostrarlo antes y el funcionario
+  cite la norma en vez de inventarla.
+- **El documento de respuesta se borra en la misma operación** cuando la
+  supresión es total. Lleva los datos de quien pidió que los borraran;
+  entregárselo al titular es del procedimiento, conservarlo contradiría la
+  supresión.
+
+Qué cuenta como «obliga a conservar»: finalidad activa + base de licitud que
+exige norma habilitante + plazo declarado + ese plazo todavía corriendo para
+**ese** titular, según el `ResuelveTitularesVencidos` del sistema. Con el enlace
+por defecto (`NingunTitularVencido`) nadie está vencido nunca, así que un
+sistema que no implementó el resolvedor no va a poder suprimir a nadie a
+petición. Una finalidad por función legal **sin plazo declarado no impide**: en
+el RAT ese null es ambiguo y `AplicarRetencion` ya lo lee como «no conserva a
+nadie»; está anotado en el spec de pendientes.
+
+### Resolver una oposición: acogerla NO levanta el bloqueo
+
+Registrar una rectificación o una oposición pone un bloqueo preventivo mientras
+se resuelve (`PRIVACIDAD_BLOQUEAR_DURANTE_SOLICITUD`). Qué pasa con ese bloqueo
+al resolver depende de si el titular obtuvo el cese, y no es uniforme:
+
+| Resolución | El bloqueo |
+|---|---|
+| Rechazada (cualquier tipo) | Se levanta: el tratamiento sigue, con fundamento |
+| Rectificación acogida | Se levanta: corregido el dato, se reanuda |
+| Oposición acogida o acogida parcial | **Se vuelve definitivo**: el tratamiento cesa |
+| Supresión acogida parcialmente | Se mantienen los que puso `Supresiones` |
+
+Acoger una oposición además **crea** el bloqueo si no había ninguno (bandera
+apagada): sin eso, acogerla no tendría ningún efecto sobre el tratamiento. El
+cese queda con el evento `bloqueo.definitivo` en la bitácora.
+
 ### Retención: se suprime a quien vencieron TODAS sus finalidades
 
 `privacidad:aplicar-retencion` no anonimiza a quien venció en una finalidad:
@@ -447,11 +516,25 @@ detalle y el resto de los huecos abiertos están en
   servicio propio, un `DB::table()` contra la base del maestro— vuelve a tener el
   defecto completo, y el módulo no puede detectarlo.
 - **Que la supresión llegue al maestro depende del `PropagaSupresion` de cada
-  sistema**, y hoy el maestro de personas **no tiene endpoint de supresión**.
-  Mientras no lo tenga, la única opción honesta es `SupresionSoloLocal`, que
-  significa: el dato se destruye acá y la identidad sigue viva en el registro
-  federado. Eso NO es una supresión efectiva a nivel de ecosistema y no se le
-  puede informar a la Agencia como tal.
+  sistema.** El endpoint **existe** (`DELETE /servicios/v1/personas/{rut}` en
+  `personas-graneros`, ya usado por `discapacidad-graneros`); acá decía que no,
+  y era falso: enlazar `SupresionSoloLocal` pudiendo propagar de verdad es
+  declarar una supresión más chica que la que el ecosistema puede hacer. Lo que
+  sí sigue abierto es lo que ese endpoint hace: `baja()` es un soft delete, o
+  sea que el maestro **oculta** al suprimido —la identidad completa sigue en la
+  fila— y el `upsert()` de cualquiera de los otros sistemas lo **revive** con un
+  `restore()` silencioso. Lo que consigue hoy el ecosistema es destrucción local
+  + baja lógica reversible en el maestro. Sirve para dejar de tratar el dato acá;
+  no alcanza para certificarle una supresión a la Agencia. El detalle y qué hay
+  que arreglar en `personas-graneros` están al principio del spec de pendientes.
+- **Vale igual para la supresión a petición** (`Supresiones`), que usa el mismo
+  contrato: acoger una supresión total propaga la baja al maestro con los mismos
+  límites de arriba.
+- **La acogida parcial de una supresión no borra nada**: deja bloqueos. Si el
+  sistema adoptante no consulta `Bloqueos::vigente()` antes de tratar el dato, el
+  cese existe solo en la tabla. Es el mismo límite que ya tenía cualquier
+  bloqueo, pero acá pesa distinto: es la respuesta que se le dio por escrito a
+  un titular que pidió que borraran sus datos.
 - **La inmutabilidad de la evidencia depende también de los permisos del motor**:
   quien tiene `DELETE` sobre `privacidad_textos` puede reescribir un texto
   publicado en su lugar y hacer que un consentimiento acredite algo que la
