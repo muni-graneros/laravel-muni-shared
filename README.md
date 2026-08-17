@@ -143,8 +143,12 @@ corrida: `archivos_no_encontrados` alto con `archivos_suprimidos` en cero.
 | `TitularDeDatos` | Sí | Cómo se exporta, purga y anonimiza a una persona, qué campos (`camposRectificables()`) puede corregir mediante el derecho de rectificación —no es un cheque en blanco sobre todo el registro— y su fecha de nacimiento (`fechaNacimientoTitular()`), de la que depende el régimen reforzado de NNA |
 | `ResuelveTitularesVencidos` | Sí | Desde cuándo se trata a un titular bajo cada finalidad. Decía «solo si hay retención» y ya no alcanza: `Supresiones` lo consulta para saber si el plazo de una finalidad por función legal todavía corre para el titular que pide la supresión. Con el enlace por defecto (`NingunTitularVencido`) nadie está vencido nunca, así que un sistema sin resolvedor **no puede acoger ninguna supresión a petición** sobre finalidades por función legal |
 | `VerificadorIdentidad` | Por convención | Cómo se acredita que el solicitante es el titular. El paquete **no lo resuelve del contenedor**: `Solicitudes::registrar()` recibe un `ResultadoVerificacion` ya construido. Es el código que llama —la acción del panel, el mesón— el que debe verificar con él antes de registrar; implementarlo y no usarlo no protege nada |
-| `PropagaSupresion` | **Sí** (una de las dos formas) | Qué debe pasar en el maestro de personas cuando este sistema suprime a un titular. Sin enlace, `AplicarRetencion` y `Supresiones` **se niegan a ejecutar** —la misma exigencia, en una sola clase (`SupresionEnElMaestro`), para que las dos no puedan divergir—. Un sistema que no es modelo de lectura del maestro lo declara enlazando `SupresionSoloLocal`. Mismos requisitos que `PropagaRectificacion`: síncrono, `false` o lanzar significan «no se propagó», y entonces no se destruye nada local |
-| `PropagaRectificacion` | Solo si es modelo de lectura del maestro | Que la rectificación no la pise la próxima sincronización. **Debe ser síncrono**: tiene que conocer la respuesta del maestro antes de devolver. Despachar un job en cola y devolver `true` no es una implementación válida —informa éxito antes de que el maestro haya visto nada—. Devolver `false` o lanzar significan lo mismo: no se propagó |
+| `PropagaSupresion` | **Sí** (una de las dos formas) | Qué debe pasar en el maestro de personas cuando este sistema suprime a un titular. Sin enlace, `AplicarRetencion` y `Supresiones` **se niegan a ejecutar** —la misma exigencia, en una sola clase (`SupresionEnElMaestro`), para que las dos no puedan divergir—. Un sistema que no es modelo de lectura del maestro lo declara enlazando `SupresionSoloLocal`. Mismos requisitos que `PropagaRectificacion`: síncrono, `rechazada()` o lanzar significan «no se propagó», y entonces no se destruye nada local |
+| `PropagaRectificacion` | Solo si es modelo de lectura del maestro | Que la rectificación no la pise la próxima sincronización. **Debe ser síncrono**: tiene que conocer la respuesta del maestro antes de devolver. Despachar un job en cola y devolver `aceptada()` no es una implementación válida —informa éxito antes de que el maestro haya visto nada—. `rechazada()` o lanzar significan lo mismo: no se propagó |
+
+Los dos contratos de propagación devuelven un `ResultadoDePropagacion`, no un
+`bool`. Ver [más abajo](#propagar-al-maestro-tiene-tres-respuestas-no-dos) por
+qué, y qué respuesta corresponde en cada caso.
 | `RegistroDeEvidencia` | No | Sustituir la bitácora propia por la del sistema |
 
 Además, cada sistema siembra sus finalidades: es donde declara qué trata, con
@@ -330,6 +334,22 @@ desenlaces:
 | Alguna obliga y alguna no | **No destruye nada**; deja un bloqueo definitivo por cada finalidad en que sí procede | Acogida parcial |
 | Todas obligan a conservar | Lanza `SupresionNoProcede`, con la norma y el plazo en el mensaje | Queda **en trámite** |
 
+**Con un RAT realista, la respuesta habitual es la del medio.** No es el caso de
+borde: basta UNA finalidad fundada en el consentimiento, o una por función legal
+sin `plazo_retencion_meses` declarado, o una cuyo plazo ya venció para este
+titular, para que algo cese y la evaluación caiga en parcial. Montar el caso «no
+procede» en los tests del módulo exigió desactivar finalidades del RAT sembrado.
+O sea: lo que el mesón va a tener que saber explicar la mayoría de las veces
+**no** es «sus datos fueron borrados» ni «no procede», sino «dejamos de
+tratarlos para esto y esto, y estos otros se conservan por esta norma hasta esta
+fecha». Un panel que solo contemple los dos extremos va a estar mal la mayor
+parte del tiempo.
+
+La tercera fila tampoco es un rechazo: `SupresionNoProcede` deja la solicitud
+**en trámite** a propósito. Rechazar es una resolución fundada que le responde a
+un ciudadano y que firma una persona; escribirla desde el módulo sería inventar
+el fundamento de un acto administrativo.
+
 Tres cosas que hay que saber antes de cablearlo a un panel:
 
 - **La acogida parcial es un cese, no un borrado parcial.** El módulo no sabe
@@ -356,6 +376,80 @@ sistema que no implementó el resolvedor no va a poder suprimir a nadie a
 petición. Una finalidad por función legal **sin plazo declarado no impide**: en
 el RAT ese null es ambiguo y `AplicarRetencion` ya lo lee como «no conserva a
 nadie»; está anotado en el spec de pendientes.
+
+### Un bloqueo no detiene nada: el candado lo escribe el sistema adoptante
+
+Es lo primero que hay que entender antes de cablear el módulo a un panel, y por
+eso está acá y no en una nota al pie. `Bloqueos::vigente()` e
+`impideCorregir()` son **consultas**. No hay scope global, no hay interceptor de
+consultas, no hay nada que se meta entre el sistema adoptante y sus propias
+tablas. El módulo escribe en `privacidad_bloqueos` que el tratamiento de una
+persona está suspendido; **quien tiene que preguntarlo antes de usar el dato es
+el adoptante**, en cada lugar donde lo usa.
+
+Dicho sin suavizarlo: el estado por defecto de cualquier sistema que instale
+este paquete es que **su panel acoja una oposición, la selle como resuelta,
+escriba el bloqueo, y el sistema siga tratando el dato exactamente igual que
+antes**. La solicitud queda cerrada, el plazo legal deja de correr, y el
+municipio tiene constancia escrita de un cese que no ocurrió.
+
+No es hipotético. `discapacidad-graneros` —el primer adoptante— estuvo
+exactamente así hasta que construyó su propio candado
+(`App\Privacidad\CeseDeTratamiento`, seis puntos de guarda en su código): hasta
+ese día su panel le prometía por escrito a un vecino un cese que no ocurría.
+Los otros siete sistemas empiezan en ese mismo punto.
+
+**Paso obligatorio de adopción: el mapeo tratamiento → finalidad.** El módulo
+no lo puede hacer por nadie —no sabe qué pantalla, qué exportación a CSV, qué
+job por cron, qué endpoint ni qué notificación de otro repo pertenece a qué
+finalidad del RAT—. Hay que escribirlo a mano, sistema por sistema:
+
+1. Listar cada punto donde el sistema **usa** los datos del titular: pantallas
+   que los exhiben, listados y buscadores, exportaciones, informes, cruces con
+   otras bases, envíos de correo o SMS, jobs y comandos por cron, endpoints de
+   API, decisiones automatizadas.
+2. Para cada uno, decir a qué **finalidad declarada en el RAT** corresponde.
+   Si no corresponde a ninguna, el hallazgo no es del bloqueo: es que el sistema
+   está tratando datos para algo que nunca declaró.
+3. Poner en cada uno la guarda: `Bloqueos::vigente($titular, $finalidad)` antes
+   de usar el dato, e `impideCorregir($titular, $finalidad)` antes de
+   escribirlo.
+4. Probarlo con un titular bloqueado de verdad, en el navegador, no en un test
+   unitario del mapeo.
+
+Las dos preguntas no son la misma, y confundirlas tiene una consecuencia
+concreta:
+
+| Pregunta | Método | Para qué |
+|---|---|---|
+| ¿Puedo **usar** este dato? | `vigente($titular, $finalidad)` | Exhibir, exportar, cruzar, notificar, decidir |
+| ¿Puedo **corregir** este dato? | `impideCorregir($titular, $finalidad)` | Escribir la rectificación que el titular pidió |
+
+Registrar una rectificación pone un bloqueo preventivo **sin finalidad**, o sea
+sobre todas. Un adoptante que consultara `vigente()` antes de aplicar la
+corrección se frenaría a sí mismo el cumplimiento del derecho que está
+tramitando. `impideCorregir()` exceptúa exactamente ese caso —el bloqueo
+preventivo de una rectificación en trámite— y nada más: no exceptúa la
+oposición en trámite, ni los bloqueos definitivos, ni los puestos a mano, ni el
+de una rectificación ya resuelta.
+
+**Un bloqueo alcanza al sistema donde se presentó, no al ecosistema entero.**
+`privacidad_bloqueos` es una tabla compartida por los ocho sistemas y
+`vigente()` filtra por `privacidad.sistema`. Se eligió así porque cesar de más
+le corta a un vecino una prestación que la ley obliga a dar, sobre finalidades
+que nunca discutió y sin dejar rastro de haberse decidido; y porque qué
+finalidad de licencias corresponde a cuál de discapacidad no hay dato en la
+tabla del que deducirlo. Lo que el módulo sí ofrece es que no quede invisible:
+`sistemasConBloqueoVigente($titular)` dice en qué otras ventanillas hay una
+suspensión vigente sobre la misma persona, para que alguien decida qué
+corresponde acá. Que el derecho ejercido ante el municipio opere en todas sus
+ventanillas es **procedimiento municipal**: hoy la vía es registrar la solicitud
+en cada sistema donde el titular quiera que opere.
+
+**Un bloqueo se levanta con `levantar($bloqueo, $motivo)`**, incluso si no nació
+de una solicitud (uno puesto a mano, o el que crea `volverDefinitivos()` con la
+bandera apagada). Exige decir por qué —reanudar es una decisión sobre alguien
+que había obtenido el cese— y un sistema no puede levantar el bloqueo de otro.
 
 ### Resolver una oposición: acogerla NO levanta el bloqueo
 
@@ -475,15 +569,60 @@ Lo que **cada sistema** tiene que hacer, y sin esto la adopción no está comple
    y mandar la persona anonimizada crea un `ANON-{id}` nuevo sin tocar la real.
    La tercera —la del contrato— es propagar la **supresión del registro que ya
    existe**, identificado por el documento que el titular tenía ANTES de
-   anonimizar. Eso **necesita un endpoint de supresión en el maestro de
-   personas**, que hoy no existe: mientras no exista, cada sistema decide entre
-   no ejecutar la retención o declarar `SupresionSoloLocal` a sabiendas de que
-   la identidad sobrevive en el maestro.
+   anonimizar. El endpoint del maestro **existe**
+   (`DELETE /servicios/v1/personas/{rut}` en `personas-graneros`, ya usado por
+   `discapacidad-graneros`), así que enlazar `SupresionSoloLocal` pudiendo
+   propagar de verdad es declarar una supresión más chica que la que el
+   ecosistema puede hacer. Lo que sigue abierto es qué hace ese endpoint: ver
+   los límites declarados más abajo.
 
    ```php
    // AppServiceProvider::register()
    $this->app->bind(PropagaSupresion::class, SuprimirEnMaestro::class);
    ```
+
+### Propagar al maestro tiene tres respuestas, no dos
+
+`PropagaSupresion::propagar()` y `PropagaRectificacion::propagar()` devuelven un
+`ResultadoDePropagacion`, que se construye con uno de tres constructores:
+
+| Respuesta | Qué significa | Qué hace el módulo |
+|---|---|---|
+| `ResultadoDePropagacion::aceptada()` | El maestro recibió el cambio y lo aceptó | Sigue: destruye lo local, o acoge la rectificación |
+| `ResultadoDePropagacion::rechazada()` | El maestro contestó que no | Aborta. No se destruye nada y la solicitud queda en trámite. Lanzar hace lo mismo |
+| `ResultadoDePropagacion::noCorrespondia($motivo)` | **No se habló con el maestro, y estuvo bien no hablarle** | Sigue, pero deja escrito que nadie habló con el registro federado |
+
+Antes eran dos —`bool`— y esa era la mentira: un sistema que en tiempo de
+ejecución decide no contactar al maestro (el ambiente no lo tiene configurado,
+este titular nunca estuvo allá) no tenía forma de decirlo sin devolver `true`.
+Y ya se estaba diciendo: en `discapacidad-graneros`,
+`PropagaSupresionAlMaestro` devolvía `true` sin contactar a nadie cuando el
+driver de la API no era `http`, así que el módulo destruía el dato local
+creyendo que el maestro había aceptado la supresión.
+
+Tres cosas que hay que saber para usar el tercer estado:
+
+- **El motivo es obligatorio y no puede ir en blanco** (`PropagacionInvalida` si
+  lo va). Sin él, «no correspondía» sería el mismo cheque en blanco con otro
+  nombre y la evidencia no podría responder por qué no se propagó.
+- **El motivo es una afirmación sobre el SISTEMA, nunca sobre el titular.**
+  Viaja a `privacidad_bitacora.datos`, que no está cifrada, y ahí rige la misma
+  invariante que en el resto del módulo. «El maestro no está configurado en este
+  ambiente» sí; el nombre o el RUT de una persona, no. El módulo no lo puede
+  comprobar: el texto lo escribe el adoptante.
+- **No se puede confundir con el éxito en ningún lado**, y eso es a propósito:
+  `retencion.aplicada`, `supresion.aplicada` y `rectificacion.aplicada` escriben
+  el estado y el motivo en `datos.propagacion`;
+  `ResultadoDeSupresion::$propagacion` se lo entrega al panel que redacta la
+  respuesta al titular (y va en `null` en la acogida parcial, porque ahí no se
+  destruyó nada y no había nada que propagar); y la corrida de retención agrega
+  `sin_propagar_al_maestro` en su constancia, que el comando imprime. La
+  pregunta «¿este sistema propaga sus supresiones?» se contesta mirando la
+  evidencia, no averiguando qué tenía enlazado ese día.
+
+`SupresionSoloLocal` —la declaración de entrada del sistema que no es modelo de
+lectura del maestro— también responde `noCorrespondia()`, y no `aceptada()`: ahí
+tampoco hay ningún maestro que haya aceptado nada.
 
 ### Límites declarados (leer antes de adoptar)
 
@@ -491,6 +630,19 @@ Lo que el módulo **no** hace, dicho acá y no en un scratch que se borra. El
 detalle y el resto de los huecos abiertos están en
 `docs/superpowers/specs/2026-08-13-ley-21719-pendientes.md`.
 
+- **No hace cesar ningún tratamiento.** Escribe bloqueos y los sabe consultar;
+  el candado que hace que el dato deje de usarse lo escribe cada sistema
+  adoptante, con su propio mapeo tratamiento → finalidad. Sin ese candado, el
+  panel promete por escrito un cese que no ocurre. Es el límite más caro de
+  todos y tiene su [propia sección](#un-bloqueo-no-detiene-nada-el-candado-lo-escribe-el-sistema-adoptante).
+- **No comprueba que se haya hablado con el maestro de personas.** La
+  propagación puede contestar `noCorrespondia()` y la supresión local sigue
+  adelante: quien sabe si hay a quién hablarle es el sistema, no el paquete. Lo
+  que el módulo garantiza es que la diferencia quede escrita y llegue a quien
+  redacta la respuesta al titular, no que el registro federado se haya enterado.
+- **No comprueba el motivo de un `noCorrespondia()`.** Es texto del adoptante y
+  termina en la bitácora sin cifrar; que no lleve datos del titular es
+  responsabilidad de quien lo escribe.
 - **Los códigos de texto nombran finalidades, no grupos de personas.**
   `texto_id` sobrevive a la anonimización —el texto no identifica a nadie— pero
   eso vale mientras `codigo` sea `aviso_recoleccion` o
