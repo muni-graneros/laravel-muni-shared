@@ -5,6 +5,7 @@ namespace Muni\Shared\Tests\Privacidad\Fixtures;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Support\Carbon;
 use Muni\Shared\Privacidad\Contratos\TitularDeDatos;
+use Muni\Shared\Privacidad\SupresionEnCurso;
 
 /**
  * Titular mínimo para ejercitar el módulo sin depender del esquema de ningún
@@ -19,6 +20,17 @@ class PersonaDePrueba extends Model implements TitularDeDatos
     public bool $sensiblesPurgados = false;
 
     public bool $fueAnonimizada = false;
+
+    /**
+     * Qué veía `SupresionEnCurso` en el instante exacto de purgar y de
+     * anonimizar. Es estático porque lo que importa medir no es esta instancia
+     * sino el contexto del proceso: el observador `saved` del sistema adoptante
+     * —que es quien despacha el write-through al maestro— consulta ese mismo
+     * contexto de proceso, no el objeto.
+     */
+    public static ?bool $supresionActivaAlPurgar = null;
+
+    public static ?bool $supresionActivaAlAnonimizar = null;
 
     public function titularNombre(): string
     {
@@ -38,12 +50,14 @@ class PersonaDePrueba extends Model implements TitularDeDatos
 
     public function purgarDatosSensibles(): void
     {
+        self::$supresionActivaAlPurgar = SupresionEnCurso::activa();
         $this->forceFill(['diagnostico' => null])->save();
         $this->sensiblesPurgados = true;
     }
 
     public function anonimizar(): void
     {
+        self::$supresionActivaAlAnonimizar = SupresionEnCurso::activa();
         $this->forceFill(['nombre' => 'ANONIMIZADO', 'documento' => null])->save();
         $this->fueAnonimizada = true;
     }

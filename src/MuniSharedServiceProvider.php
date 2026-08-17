@@ -2,6 +2,7 @@
 
 namespace Muni\Shared;
 
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\ServiceProvider;
 use Muni\Shared\Console\ConfigurarCorreoCommand;
@@ -65,6 +66,7 @@ class MuniSharedServiceProvider extends ServiceProvider
         }
 
         $this->registrarCorreoPorGraph();
+        $this->agendarRetencion();
 
         if ($this->app->runningInConsole()) {
             $this->commands([
@@ -75,6 +77,52 @@ class MuniSharedServiceProvider extends ServiceProvider
                 ExportarRatCommand::class,
             ]);
         }
+    }
+
+    /**
+     * Agenda la retención SOLO si el sistema declaró la hora.
+     *
+     * Por qué el paquete la agenda en vez de dejarlo escrito en el README de
+     * adopción: porque eso ya se probó y no funcionó. En el sistema real el
+     * módulo quedó instalado, migrado, sembrado y con los contratos enlazados, y
+     * `schedule:list` no listaba ninguno de sus dos comandos: la obligación
+     * legal de suprimir dependía de que alguien se acordara de tipear el
+     * comando. Es el paso que nadie escribe.
+     *
+     * Y por qué igual hace falta una clave de configuración en vez de agendarlo
+     * siempre: instalar un paquete no puede poner a correr un destructivo en
+     * ocho sistemas. La clave es una línea en el `.env`, decidida por el
+     * municipio, y sin ella no se agenda nada.
+     *
+     * Los dos candados van juntos y ninguno sobra: `withoutOverlapping()` impide
+     * que la corrida de mañana entre encima de la de hoy si todavía no terminó
+     * —a ~17 personas por segundo, la primera corrida sobre un backlog real dura
+     * más que un día—, y `onOneServer()` impide que dos servidores del mismo
+     * despliegue la corran a la vez. El solape medido en MariaDB aborta una de
+     * las dos corridas con el error 1020, a mitad.
+     */
+    private function agendarRetencion(): void
+    {
+        // callAfterResolving y no `app(Schedule::class)`: resolver el scheduler
+        // acá adentro lo construiría en toda petición web, donde no se usa.
+        //
+        // Y la hora se lee DENTRO del callback, no acá afuera: leerla en el boot
+        // del provider la congela en el instante más temprano del ciclo de vida,
+        // antes de que un adoptante pueda ajustar la configuración (o una prueba
+        // ejercitarla). El scheduler se resuelve cuando corre `schedule:run` o
+        // `schedule:list`, que es cuando la configuración ya está completa.
+        $this->callAfterResolving(Schedule::class, function (Schedule $schedule): void {
+            $hora = trim((string) config('privacidad.retencion.hora', ''));
+
+            if ($hora === '') {
+                return;
+            }
+
+            $schedule->command(AplicarRetencionCommand::class, ['--ejecutar'])
+                ->dailyAt(trim($hora))
+                ->withoutOverlapping()
+                ->onOneServer();
+        });
     }
 
     /**

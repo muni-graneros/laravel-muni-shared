@@ -9,6 +9,7 @@ use Muni\Shared\Privacidad\AplicarRetencion;
 use Muni\Shared\Privacidad\BaseLicitud;
 use Muni\Shared\Privacidad\Bitacora;
 use Muni\Shared\Privacidad\Consentimientos;
+use Muni\Shared\Privacidad\Contratos\PropagaSupresion;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Contratos\ResuelveTitularesVencidos;
 use Muni\Shared\Privacidad\ExportacionDeDatos;
@@ -20,6 +21,7 @@ use Muni\Shared\Privacidad\Rectificaciones;
 use Muni\Shared\Privacidad\ResultadoVerificacion;
 use Muni\Shared\Privacidad\Solicitante;
 use Muni\Shared\Privacidad\Solicitudes;
+use Muni\Shared\Privacidad\SupresionSoloLocal;
 use Muni\Shared\Privacidad\Textos;
 use Muni\Shared\Privacidad\TipoDeSolicitud;
 use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
@@ -120,6 +122,12 @@ beforeEach(function () {
     // acreditacion_path seteados, así que sin esto cualquier desvincular()
     // de este archivo truena con DiscoEvidenciaNoConfigurado.
     config(['privacidad.sistema' => 'discapacidad', 'privacidad.disco_evidencia' => 'local']);
+
+    // Declaración obligatoria desde que la supresión se propaga al maestro de
+    // personas: sin ella, `AplicarRetencion` se niega a ejecutar. Acá se declara
+    // «solo local» porque lo que este archivo mide es el grafo del sistema, no
+    // la federación.
+    app()->bind(PropagaSupresion::class, SupresionSoloLocal::class);
 
     // El caso que hace peligrosos a los `user_*`: un adoptante con portal
     // ciudadano, donde quien está autenticado es el propio titular. El módulo

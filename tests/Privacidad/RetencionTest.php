@@ -2,16 +2,24 @@
 
 use Muni\Shared\Privacidad\AplicarRetencion;
 use Muni\Shared\Privacidad\BaseLicitud;
+use Muni\Shared\Privacidad\Contratos\PropagaSupresion;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Contratos\ResuelveTitularesVencidos;
 use Muni\Shared\Privacidad\Modelos\EntradaBitacora;
 use Muni\Shared\Privacidad\Modelos\Finalidad;
 use Muni\Shared\Privacidad\NingunTitularVencido;
+use Muni\Shared\Privacidad\SupresionSoloLocal;
 use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
 use Muni\Shared\Tests\Privacidad\Fixtures\UsuarioDePrueba;
 
 beforeEach(function () {
     config(['privacidad.sistema' => 'discapacidad']);
+
+    // Paso obligatorio desde que la supresión se propaga al maestro de personas:
+    // sin declaración, `AplicarRetencion` se niega a ejecutar. Este archivo
+    // declara «solo local», que es lo que corresponde a un sistema de prueba sin
+    // maestro; la federación se ejercita en SupresionEnElMaestroTest.
+    app()->bind(PropagaSupresion::class, SupresionSoloLocal::class);
 
     $this->finalidad = Finalidad::create([
         'sistema' => 'discapacidad',
@@ -45,7 +53,9 @@ beforeEach(function () {
 it('en simulación informa a quién tocaría sin tocar nada', function () {
     $resumen = app(AplicarRetencion::class)->ejecutar(simulacion: true);
 
-    expect($resumen)->toBe([['finalidad' => 'atencion', 'titulares' => 1]])
+    expect($resumen->porFinalidad)->toBe([['finalidad' => 'atencion', 'titulares' => 1]])
+        ->and($resumen->suprimibles)->toBe(1)
+        ->and($resumen->suprimidos)->toBe(0)
         ->and($this->vencida->refresh()->diagnostico)->toBe('dato sensible de salud')
         ->and($this->vencida->refresh()->nombre)->toBe('Rocío Paredes')
         ->and(EntradaBitacora::count())->toBe(0);
@@ -125,12 +135,11 @@ it('las cantidades del barrido se publican una vez por corrida, no por titular',
 
     // Dos previas + su propia 'retencion.aplicada' para la primera; una previa +
     // la suya para la segunda.
-    expect($corrida->datos)->toBe([
-        'titulares' => 2,
-        'filas' => 5,
-        'archivos_suprimidos' => 0,
-        'archivos_no_encontrados' => 0,
-    ])
+    expect($corrida->datos['titulares'])->toBe(2)
+        ->and($corrida->datos['filas'])->toBe(5)
+        ->and($corrida->datos['archivos_suprimidos'])->toBe(0)
+        ->and($corrida->datos['archivos_no_encontrados'])->toBe(0)
+        ->and($corrida->datos['completa'])->toBeTrue()
         // Sin usuario y sin titular, igual que la constancia por titular: una
         // corrida disparada desde un panel con sesión abierta dejaría ahí el id
         // de quien la lanzó, en el instante de la anonimización.
@@ -148,14 +157,14 @@ it('las cantidades del barrido se publican una vez por corrida, no por titular',
 it('ignora finalidades sin plazo de retención', function () {
     $this->finalidad->update(['plazo_retencion_meses' => null]);
 
-    expect(app(AplicarRetencion::class)->ejecutar(simulacion: false))->toBe([]);
+    expect(app(AplicarRetencion::class)->ejecutar(simulacion: false)->sinNadaQueRevisar())->toBeTrue();
     expect($this->vencida->refresh()->diagnostico)->toBe('dato sensible de salud');
 });
 
 it('ignora finalidades inactivas', function () {
     $this->finalidad->update(['activa' => false]);
 
-    expect(app(AplicarRetencion::class)->ejecutar(simulacion: false))->toBe([]);
+    expect(app(AplicarRetencion::class)->ejecutar(simulacion: false)->sinNadaQueRevisar())->toBeTrue();
     expect($this->vencida->refresh()->diagnostico)->toBe('dato sensible de salud');
 });
 
@@ -218,6 +227,6 @@ it('un sistema que no implementó el resolvedor no purga nada en vez de reventar
     app()->forgetInstance(ResuelveTitularesVencidos::class);
     app()->bind(ResuelveTitularesVencidos::class, NingunTitularVencido::class);
 
-    expect(app(AplicarRetencion::class)->ejecutar(simulacion: false))->toBe([]);
+    expect(app(AplicarRetencion::class)->ejecutar(simulacion: false)->sinNadaQueRevisar())->toBeTrue();
     expect($this->vencida->refresh()->diagnostico)->toBe('dato sensible de salud');
 });

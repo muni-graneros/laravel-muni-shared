@@ -108,7 +108,19 @@ PRIVACIDAD_DISCO_EVIDENCIA=local
 PRIVACIDAD_RESPONSABLE="I. Municipalidad de Graneros"
 PRIVACIDAD_CONTACTO=privacidad@municipalidadgraneros.cl
 PRIVACIDAD_DELEGADO=
+PRIVACIDAD_RETENCION_HORA=03:30
 ```
+
+`PRIVACIDAD_RETENCION_HORA` es **paso obligatorio de adopción**, sin default.
+Con ella, el paquete agenda `privacidad:aplicar-retencion --ejecutar` a esa hora
+todos los días, con `withoutOverlapping()` y `onOneServer()`. Sin ella no se
+agenda nada, y eso también es a propósito: instalar un paquete no puede poner a
+correr un destructivo en ocho sistemas. Lo que se midió en la adopción real es
+el otro lado del mismo problema: el módulo quedó instalado, migrado, sembrado y
+con los contratos enlazados, y `schedule:list` no listaba ninguno de sus
+comandos — la obligación legal de suprimir dependía de que alguien se acordara
+de tipear el comando. Comprobar con `php artisan schedule:list` después de
+adoptar.
 
 `PRIVACIDAD_DISCO_EVIDENCIA` es **paso obligatorio de adopción**, sin default:
 tiene que nombrar el disco donde ESTE sistema guarda los documentos cuyas
@@ -131,6 +143,7 @@ corrida: `archivos_no_encontrados` alto con `archivos_suprimidos` en cero.
 | `TitularDeDatos` | Sí | Cómo se exporta, purga y anonimiza a una persona, qué campos (`camposRectificables()`) puede corregir mediante el derecho de rectificación —no es un cheque en blanco sobre todo el registro— y su fecha de nacimiento (`fechaNacimientoTitular()`), de la que depende el régimen reforzado de NNA |
 | `ResuelveTitularesVencidos` | Solo si hay retención | Desde cuándo se trata a un titular bajo cada finalidad |
 | `VerificadorIdentidad` | Por convención | Cómo se acredita que el solicitante es el titular. El paquete **no lo resuelve del contenedor**: `Solicitudes::registrar()` recibe un `ResultadoVerificacion` ya construido. Es el código que llama —la acción del panel, el mesón— el que debe verificar con él antes de registrar; implementarlo y no usarlo no protege nada |
+| `PropagaSupresion` | **Sí** (una de las dos formas) | Qué debe pasar en el maestro de personas cuando este sistema suprime a un titular. Sin enlace, `AplicarRetencion` **se niega a ejecutar**. Un sistema que no es modelo de lectura del maestro lo declara enlazando `SupresionSoloLocal`. Mismos requisitos que `PropagaRectificacion`: síncrono, `false` o lanzar significan «no se propagó», y entonces no se destruye nada local |
 | `PropagaRectificacion` | Solo si es modelo de lectura del maestro | Que la rectificación no la pise la próxima sincronización. **Debe ser síncrono**: tiene que conocer la respuesta del maestro antes de devolver. Despachar un job en cola y devolver `true` no es una implementación válida —informa éxito antes de que el maestro haya visto nada—. Devolver `false` o lanzar significan lo mismo: no se propagó |
 | `RegistroDeEvidencia` | No | Sustituir la bitácora propia por la del sistema |
 
@@ -292,6 +305,117 @@ los tipos que no dan derecho a la copia y deja la entrega en `privacidad_bitacor
 `paraTitular()` no verifica nada ni registra nada: cablearla a una acción que
 recibe un id del request es un IDOR sin rastro.
 
+### Retención: se suprime a quien vencieron TODAS sus finalidades
+
+`privacidad:aplicar-retencion` no anonimiza a quien venció en una finalidad:
+anonimiza a quien venció en **todas** las finalidades activas con plazo del
+sistema. Está dicho acá porque la versión anterior hacía lo otro y el efecto era
+silencioso: recorría finalidad por finalidad y anonimizaba de inmediato, así que
+el plazo más corto del RAT se llevaba puestos a los demás. En la corrida real,
+`agenda_citas` (24 meses) anonimizó a **11.517 personas** que `registro_comunal`
+(120 meses) tenía que conservar; los plazos de 60 y 120 declarados a la autoridad
+no operaban.
+
+Lo que eso le exige al `ResuelveTitularesVencidos` de cada sistema: `vencidos()`
+tiene que devolver, para cada finalidad, **a quien esa finalidad ya no
+necesita** — tanto al que cumplió el plazo como al que esa finalidad nunca
+alcanzó. Un resolvedor que devuelva solo a los que tienen historia bajo esa
+finalidad (p. ej. solo quienes tuvieron citas, para `agenda_citas`) deja a los
+demás fuera de la intersección y **no se los anonimiza nunca**. Falla del lado
+seguro —conserva de más— pero es conservación indebida, y hay que revisarlo al
+escribir el resolvedor.
+
+La pantalla de confirmación (la simulación) muestra ahora tres números, porque
+la tabla por finalidad sola era engañosa: sumaba 50.041 «titulares» sobre 20.027
+personas sin decir que los conjuntos se superponen.
+
+```
+Los conjuntos por finalidad se superponen: la suma de la tabla NO es un total de personas.
+Personas distintas alcanzadas: 20027
+Se suprimirían: 2483 — solo quienes vencieron en TODAS las finalidades con plazo.
+```
+
+La evidencia de cada supresión (`retencion.aplicada`) y la constancia de la
+corrida (`retencion.constancia`) llevan **todas** las finalidades consideradas
+con su plazo, no la que venció primero.
+
+La constancia se escribe **por lote** (`PRIVACIDAD_RETENCION_LOTE`, 100 por
+defecto) y es **acumulada**: cada una lleva el total de la corrida hasta ese
+punto, todas comparten un token `corrida`, y la última dice `completa: true`.
+Se lee tomando la última de cada `corrida`; sumarlas cuenta dos veces a las
+mismas personas. Existe así porque el `finally` que la escribía al cierre
+protege contra excepciones pero no contra que maten el proceso: la corrida real
+murió por timeout a los 10 minutos con 10.131 personas anonimizadas y **cero
+constancias**. Si ninguna constancia de un `corrida` dice `completa`, esa corrida
+no terminó.
+
+### Supresión y write-through al maestro (paso obligatorio de adopción)
+
+Esto es lo que apareció al correr la retención contra un maestro de personas
+real, y no lo veía ninguna suite: **anonimizar localmente daba de alta la
+identidad de la persona en el registro federado**.
+
+La mecánica, medida en la base del maestro (120 filas creadas en 60
+anonimizaciones): `purgarDatosSensibles()` y `anonimizar()` terminan en
+`->save()`; el sistema adoptante tiene un observador `Persona::saved` que
+despacha el write-through; el maestro hace upsert por RUT. Resultado: el primer
+`save()` empuja la persona **todavía íntegra** —o sea, la retención la da de
+alta en el maestro justo antes de borrarla acá— y el segundo crea una persona
+nueva `ANON-{id}`. La identidad real queda viva y consultable por RUT desde los
+otros siete sistemas.
+
+El paquete cierra lo que puede cerrar solo:
+
+- `AplicarRetencion` corre la purga y la anonimización dentro de
+  `SupresionEnCurso`, una marca de proceso.
+- `SincronizarAlMaestro` —el transporte del ecosistema, del que heredan los ocho
+  sistemas— estampa esa marca en el job al construirlo y descarta el envío al
+  ejecutarlo, aunque el observador lo haya despachado igual.
+- `SincronizarAlMaestro` descarta además cualquier envío cuyo `nro_documento`
+  empiece con el centinela `ANON-`. Esto cierra la **segunda** puerta, que la
+  marca de proceso no alcanza: el cron `personas:resincronizar` compara
+  `updated_at > sincronizado_maestro_at`, y como la anonimización mueve
+  `updated_at`, quince minutos después re-despachaba a la persona ya anonimizada
+  y creaba el `ANON-{id}` igual. Un sistema que anonimice con otro centinela
+  tiene que sobrescribir `suprimido(array $payload)`.
+
+Lo que **cada sistema** tiene que hacer, y sin esto la adopción no está completa:
+
+1. **Guardar el observador.** El write-through no debe despacharse durante una
+   supresión:
+
+   ```php
+   Persona::saved(function (Persona $p): void {
+       if (SupresionEnCurso::activa()) {
+           return; // la retención no sincroniza: propaga la supresión aparte
+       }
+
+       $actor = auth()->user();
+       SincronizarPersonaAlMaestro::dispatch($p->id, $actor?->email, $actor?->name);
+   });
+   ```
+
+   La guardia del job ya lo cubre; ésta evita además llenar la cola y el log de
+   jobs descartados, y es la que protege a cualquier otro observador que el
+   sistema tenga colgando de `saved`.
+
+2. **Enlazar `PropagaSupresion`.** Es lo que decide qué le llega al maestro
+   cuando alguien ejerce su derecho de supresión. Las dos respuestas obvias ya
+   se descartaron con evidencia: no mandar nada deja la identidad viva en el
+   registro federado (y el municipio certificando una supresión que no ocurrió),
+   y mandar la persona anonimizada crea un `ANON-{id}` nuevo sin tocar la real.
+   La tercera —la del contrato— es propagar la **supresión del registro que ya
+   existe**, identificado por el documento que el titular tenía ANTES de
+   anonimizar. Eso **necesita un endpoint de supresión en el maestro de
+   personas**, que hoy no existe: mientras no exista, cada sistema decide entre
+   no ejecutar la retención o declarar `SupresionSoloLocal` a sabiendas de que
+   la identidad sobrevive en el maestro.
+
+   ```php
+   // AppServiceProvider::register()
+   $this->app->bind(PropagaSupresion::class, SuprimirEnMaestro::class);
+   ```
+
 ### Límites declarados (leer antes de adoptar)
 
 Lo que el módulo **no** hace, dicho acá y no en un scratch que se borra. El
@@ -317,6 +441,17 @@ detalle y el resto de los huecos abiertos están en
 - **Quien nació un 29 de febrero** cumple los 18 el 1 de marzo según este módulo.
   Es el lado conservador —lo trata como NNA un día más— y no una certeza
   jurídica: el art. 48 del Código Civil admite leerse como el 28.
+- **La marca de supresión no impide ningún envío por sí sola**: impide los de
+  quien la consulta. Hoy la consultan `SincronizarAlMaestro` y el observador del
+  sistema adoptante. Un sistema que empuje al maestro por otro camino —un
+  servicio propio, un `DB::table()` contra la base del maestro— vuelve a tener el
+  defecto completo, y el módulo no puede detectarlo.
+- **Que la supresión llegue al maestro depende del `PropagaSupresion` de cada
+  sistema**, y hoy el maestro de personas **no tiene endpoint de supresión**.
+  Mientras no lo tenga, la única opción honesta es `SupresionSoloLocal`, que
+  significa: el dato se destruye acá y la identidad sigue viva en el registro
+  federado. Eso NO es una supresión efectiva a nivel de ecosistema y no se le
+  puede informar a la Agencia como tal.
 - **La inmutabilidad de la evidencia depende también de los permisos del motor**:
   quien tiene `DELETE` sobre `privacidad_textos` puede reescribir un texto
   publicado en su lugar y hacer que un consentimiento acredite algo que la
@@ -331,3 +466,14 @@ php artisan privacidad:rat --json                 # el RAT para adjuntar
 php artisan privacidad:aplicar-retencion          # simulación
 php artisan privacidad:aplicar-retencion --ejecutar
 ```
+
+`--ejecutar` toma un candado (`Cache::lock`) y falla con código distinto de cero
+si ya hay otra corrida en curso. La simulación no lo toma: siempre se puede
+mirar. El candado está en el comando y no solo en el `withoutOverlapping()` del
+schedule porque el solape que se midió no fue entre dos corridas del cron, sino
+entre un `docker compose exec` cuyo timeout venció —el proceso siguió vivo
+dentro del contenedor— y la corrida que alguien lanzó encima: MariaDB abortó una
+de las dos con `SQLSTATE 1020`, que en SQLite y con un solo proceso la suite no
+puede ver. Requiere un store de caché con soporte de candados (`redis`,
+`database`, `memcached`, `file`, `array`); con uno que no lo soporte, el comando
+corre sin candado.

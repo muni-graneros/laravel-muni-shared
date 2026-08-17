@@ -91,6 +91,38 @@ return [
     // con la jefatura antes de producción.
     'bloquear_durante_solicitud' => (bool) env('PRIVACIDAD_BLOQUEAR_DURANTE_SOLICITUD', true),
 
+    'retencion' => [
+        // Hora diaria a la que corre `privacidad:aplicar-retencion --ejecutar`,
+        // en formato 'HH:MM'. Vacío o ausente = NO se agenda.
+        //
+        // Sin default a propósito, y esta vez el default ausente no es sobre
+        // configuración sino sobre destrucción: un paquete que se instala y
+        // empieza a anonimizar por cron en ocho sistemas —porque alguien corrió
+        // `composer update`— es inaceptable, por más que la obligación legal de
+        // suprimir sí exista. La decisión de cuándo se destruye es del
+        // municipio.
+        //
+        // Y el otro lado del mismo problema, que es el que se midió: en el
+        // sistema real el módulo estaba instalado, migrado, sembrado y con los
+        // contratos enlazados, y `schedule:list` no lo listaba. Nunca corrió.
+        // Por eso poner esta clave es paso OBLIGATORIO de adopción y está en el
+        // README: la alternativa —agendarlo a mano en cada sistema— es
+        // exactamente el paso que nadie escribió.
+        'hora' => env('PRIVACIDAD_RETENCION_HORA'),
+
+        // Cada cuántos titulares se publica la constancia acumulada de la
+        // corrida. No es afinamiento: es lo que hace que una corrida
+        // interrumpida deje evidencia de lo que alcanzó a hacer. La corrida real
+        // murió por timeout con 10.131 personas anonimizadas y cero constancias.
+        'lote' => (int) env('PRIVACIDAD_RETENCION_LOTE', 100),
+
+        // Vigencia del candado que impide dos corridas simultáneas. Tiene que
+        // ser mayor que la corrida más larga esperable: la real iba a ~17
+        // personas por segundo. Se suelta igual al terminar; esto es el techo
+        // para el caso en que el proceso muera sin soltarlo.
+        'candado_segundos' => (int) env('PRIVACIDAD_RETENCION_CANDADO_SEGUNDOS', 21600),
+    ],
+
     // Datos del responsable del tratamiento, que van en el RAT y en las
     // respuestas al titular. Por municipio, nunca hardcodeados.
     'responsable' => [
