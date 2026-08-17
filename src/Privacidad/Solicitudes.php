@@ -184,11 +184,35 @@ class Solicitudes
                 'tipo' => $solicitud->tipo->value,
             ], $solicitud->titular);
 
-            // Se resuelva como se resuelva —acogida, rechazada— la disputa
-            // terminó: el bloqueo que la registró no tiene ya ninguna razón
-            // para seguir vigente. No hace nada si nunca se bloqueó (config
-            // apagada, o un tipo que no dispara bloqueo).
-            $this->bloqueos->levantarPorSolicitud($solicitud);
+            // Acá vivía «se resuelva como se resuelva, la disputa terminó y el
+            // bloqueo se levanta», y era al revés del derecho para la mitad de
+            // los casos: una oposición ACOGIDA es el municipio diciendo que
+            // deja de tratar el dato, y levantar ahí el bloqueo reanudaba el
+            // tratamiento justo cuando se le dio la razón al titular. La
+            // solicitud quedaba «acogida» y el sistema seguía igual que antes.
+            //
+            // Se levanta cuando el titular NO obtuvo el cese: un rechazo (el
+            // tratamiento sigue, y con fundamento), o una acogida cuyo efecto
+            // es reanudar —la rectificación, donde el bloqueo suspendía el uso
+            // de un dato en disputa que ya quedó corregido—.
+            if (! $estado->esAcogida() || $solicitud->tipo->acogerloReanudaElTratamiento()) {
+                $this->bloqueos->levantarPorSolicitud($solicitud);
+
+                return;
+            }
+
+            // Y cuando el efecto es el cese, el bloqueo preventivo se vuelve
+            // definitivo en vez de levantarse. Para la supresión los bloqueos
+            // los pone `Supresiones` —una por finalidad, con lo que la
+            // supresión no alcanzó a destruir— y ya nacen con su motivo
+            // definitivo: volver a reescribirlo acá los aplanaría todos al
+            // mismo texto genérico y se perdería cuál finalidad cesó por qué.
+            if ($solicitud->tipo === TipoDeSolicitud::Oposicion) {
+                $this->bloqueos->volverDefinitivos(
+                    $solicitud,
+                    'Oposición acogida: el tratamiento cesa por resolución de la solicitud #'.$solicitud->getKey().'.',
+                );
+            }
         });
     }
 

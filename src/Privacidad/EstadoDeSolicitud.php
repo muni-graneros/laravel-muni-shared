@@ -18,6 +18,20 @@ enum EstadoDeSolicitud: string
     }
 
     /**
+     * Si la resolución le dio la razón al titular, entera o en parte.
+     *
+     * `AcogidaParcial` cuenta como acogida y no como un punto medio: lo que
+     * distingue a una acogida parcial es el ALCANCE de lo concedido, no que se
+     * haya concedido menos convicción. Tratarla como si fuera un rechazo es lo
+     * que hacía que acoger parcialmente una oposición levantara el bloqueo
+     * sobre las finalidades en las que el municipio le acababa de dar la razón.
+     */
+    public function esAcogida(): bool
+    {
+        return $this === self::Acogida || $this === self::AcogidaParcial;
+    }
+
+    /**
      * Sin esto, cada panel que lista solicitudes escribe sus propias
      * etiquetas en español, y cinco sistemas terminan nombrando el mismo
      * estado de cinco formas distintas en documentos que un titular lee.
