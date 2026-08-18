@@ -221,9 +221,68 @@ Se dejan escritos porque son el mismo error de forma que este proyecto persigue
 hace catorce hallazgos: **una observación verificada en una dimensión y enunciada
 en otra más ancha.** La diferencia es que se cazaron a tiempo.
 
+## Hallazgo grave y AJENO a este trabajo: el modo oscuro del panel es ilegible
+
+Se encontró al capturar el listado ARCOP en modo oscuro, y **no lo causó este
+trabajo**: se reproduce igual en `Personas`, un recurso muy anterior.
+
+**Qué se ve:** la tarjeta de la tabla se queda blanca mientras la página es
+oscura, y el texto de adentro toma el color del tema oscuro. Medido en el
+elemento que lleva el texto:
+
+```
+.fi-ta-text-item   color: rgb(255,255,255)   ← blanco
+.fi-ta-ctn         background: rgb(255,255,255)   ← blanco
+```
+
+**Contraste 1:1.** En `Personas` desaparecen nombres, RUT, teléfonos y sector; en
+ARCOP desaparece la fecha de recepción. No es un problema estético: es WCAG 2.2
+AA al nivel más básico, y los sistemas del Estado —municipalidades incluidas—
+están obligados por el **Decreto N°1 / 2015 SEGPRES**.
+
+Y es alcanzable por cualquier funcionario: el panel no llama a `darkMode(false)`,
+así que Filament ofrece el conmutador de tema.
+
+**Causa raíz, confirmada en el CSS compilado.** `tailwind.config.js` (Tailwind
+3.4) **no declara `darkMode`**, y el valor por omisión en v3 es `media`. En
+`public/build/assets/app-*.css` las utilidades quedaron así:
+
+```css
+@media (prefers-color-scheme:dark){ .dark\:divide-white\/10 { … } }
+```
+
+O sea: las variantes `dark:` solo se activan si el **sistema operativo** pide
+oscuro. El conmutador de Filament pone `class="dark"` en `<html>` y esas reglas
+no se enteran. `muni-ui` sí usa el selector `.dark` para sus tokens, y de ahí el
+estado mixto: unas capas cambian y otras no.
+
+**El arreglo es una línea** —`darkMode: 'class'` en `tailwind.config.js`— más
+recompilar los assets. **No se aplicó acá a propósito**: activa de golpe todas
+las variantes `dark:` de todo el panel, así que exige una pasada visual página
+por página en los dos modos, y eso es un trabajo aparte del ciclo ARCOP. Conviene
+revisar de paso si los otros sistemas Filament del ecosistema tienen la misma
+omisión.
+
 ## Lo que queda sin verificar
 
-- **Modo oscuro, móvil y navegación completa por teclado** del recurso ARCOP y su
-  widget. Se capturó el listado en escritorio y modo claro.
-- **La descarga del expediente** (derecho de acceso y portabilidad): el botón
-  está y es visible con el rol correcto, pero no se ejerció la descarga.
+- **Móvil y navegación completa por teclado** del recurso ARCOP y su widget.
+- **El modo oscuro queda verificado como roto**, pero por una causa ajena; no se
+  revisó cómo se ve el ARCOP una vez que esa causa se corrija.
+
+## La descarga del expediente, verificada
+
+Se ejerció el derecho de acceso desde el panel: descarga `expediente-solicitud-3.json`
+(792 bytes) con identificación, contacto, discapacidades, atenciones y citas
+**solo del titular** —sin ninguna fila de terceros— y deja su evidencia
+`datos.exportados` en la bitácora, con los nombres de los campos entregados y sin
+sus valores.
+
+Y ahí el hallazgo 1 deja de ser una advertencia de consola y se vuelve concreto:
+
+```json
+"responsable": { "nombre": "I. Municipalidad de Graneros", "contacto": "", "delegado": "" }
+```
+
+**El documento que se le entrega al vecino no le dice a quién dirigirse para
+ejercer sus derechos.** Es el mismo `PRIVACIDAD_CONTACTO`/`PRIVACIDAD_DELEGADO`
+que falta en el `.env`, pero visto donde importa.
