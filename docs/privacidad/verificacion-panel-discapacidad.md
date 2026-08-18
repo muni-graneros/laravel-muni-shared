@@ -221,47 +221,70 @@ Se dejan escritos porque son el mismo error de forma que este proyecto persigue
 hace catorce hallazgos: **una observación verificada en una dimensión y enunciada
 en otra más ancha.** La diferencia es que se cazaron a tiempo.
 
-## Hallazgo grave y AJENO a este trabajo: el modo oscuro del panel es ilegible
+## Hallazgo grave y AJENO a este trabajo: el modo oscuro del panel era ilegible
 
 Se encontró al capturar el listado ARCOP en modo oscuro, y **no lo causó este
 trabajo**: se reproduce igual en `Personas`, un recurso muy anterior.
 
-**Qué se ve:** la tarjeta de la tabla se queda blanca mientras la página es
-oscura, y el texto de adentro toma el color del tema oscuro. Medido en el
-elemento que lleva el texto:
+**Qué se veía.** La tarjeta de la tabla se quedaba blanca mientras la página era
+oscura, y el texto de adentro tomaba el color del tema oscuro:
 
 ```
 .fi-ta-text-item   color: rgb(255,255,255)   ← blanco
 .fi-ta-ctn         background: rgb(255,255,255)   ← blanco
 ```
 
-**Contraste 1:1.** En `Personas` desaparecen nombres, RUT, teléfonos y sector; en
-ARCOP desaparece la fecha de recepción. No es un problema estético: es WCAG 2.2
-AA al nivel más básico, y los sistemas del Estado —municipalidades incluidas—
-están obligados por el **Decreto N°1 / 2015 SEGPRES**.
+**Contraste 1:1.** En `Personas` desaparecían nombres, RUT, teléfonos y sector;
+en ARCOP, la fecha de recepción. No es estético: es WCAG 2.2 AA al nivel más
+básico, y los sistemas del Estado están obligados por el **Decreto N°1 / 2015
+SEGPRES**. Y era alcanzable: el panel no llamaba a `darkMode(false)`, así que
+Filament ofrecía el conmutador.
 
-Y es alcanzable por cualquier funcionario: el panel no llama a `darkMode(false)`,
-así que Filament ofrece el conmutador de tema.
+### La causa NO se identificó, y conviene dejar escrito qué se descartó
 
-**Causa raíz, confirmada en el CSS compilado.** `tailwind.config.js` (Tailwind
-3.4) **no declara `darkMode`**, y el valor por omisión en v3 es `media`. En
-`public/build/assets/app-*.css` las utilidades quedaron así:
+Se persiguió hasta donde alcanzó la evidencia, y **todo apunta a que la regla
+correcta debería aplicarse**:
 
-```css
-@media (prefers-color-scheme:dark){ .dark\:divide-white\/10 { … } }
-```
+- El CSS publicado de Filament SÍ trae la regla:
+  `.fi-ta-ctn:where(.dark,.dark *){background-color:var(--gray-900)}`.
+- Está en la **misma capa** (`components`) y **después** de la regla clara, con
+  **igual especificidad** y **sin `!important`** (verificado leyendo
+  `cssText` y `getPropertyPriority` desde el navegador).
+- `--gray-900` **resuelve bien en ese mismo elemento** (se comprobó pintando un
+  div de prueba dentro del contenedor).
+- `matches('.fi-ta-ctn:where(.dark, .dark *)')` devuelve **true**.
+- No hay estilo inline, ni otra hoja que redeclare el fondo del contenedor.
+- Un elemento **creado a mano** con la clase, dentro del mismo árbol, también
+  computa blanco.
 
-O sea: las variantes `dark:` solo se activan si el **sistema operativo** pide
-oscuro. El conmutador de Filament pone `class="dark"` en `<html>` y esas reglas
-no se enteran. `muni-ui` sí usa el selector `.dark` para sus tokens, y de ahí el
-estado mixto: unas capas cambian y otras no.
+**Y una atribución equivocada que hay que dejar corregida**: en un primer momento
+se culpó a `tailwind.config.js` por no declarar `darkMode: 'class'` (Tailwind v3
+usa `media` por omisión). Es cierto que no lo declara, pero **no es la causa**:
+el CSS de Filament es class-based y no contiene una sola regla
+`prefers-color-scheme`. Cambiar la estrategia de Tailwind no habría arreglado
+esto. La hipótesis se formó leyendo el `app.css` compilado del proyecto —donde
+las utilidades `dark:` de `muni-ui` sí compilan bajo media query— y se enunció
+sobre el panel entero. El mismo error de forma de siempre.
 
-**El arreglo es una línea** —`darkMode: 'class'` en `tailwind.config.js`— más
-recompilar los assets. **No se aplicó acá a propósito**: activa de golpe todas
-las variantes `dark:` de todo el panel, así que exige una pasada visual página
-por página en los dos modos, y eso es un trabajo aparte del ciclo ARCOP. Conviene
-revisar de paso si los otros sistemas Filament del ecosistema tienen la misma
-omisión.
+### Lo que sí se hizo: desactivar el modo oscuro
+
+`->darkMode(false)` en `DiscapacidadPanelProvider`, con la evidencia escrita en
+el propio código. **Es una mitigación, no un arreglo**, y así está declarado:
+mientras la causa no se entienda, ofrecer el conmutador es ofrecerle a un
+funcionario una vista donde no puede leer los datos del vecino.
+
+Verificado después del cambio, en el navegador:
+
+- El conmutador de tema **desaparece** de la interfaz.
+- `html` ya no recibe la clase `dark`.
+- **A quien ya tenía oscuro guardado se le fuerza claro**: se puso
+  `localStorage.theme = 'dark'` a mano y tras recargar volvió a `light`. Era la
+  regresión que importaba, porque un funcionario que hubiera cambiado el tema
+  antes seguiría viendo la pantalla rota.
+- El modo claro queda intacto: la tabla de `Personas` muestra otra vez documento,
+  nombres, apellidos, teléfono, sector y discapacidad.
+
+Se revierte en cuanto el modo oscuro se pueda verificar legible.
 
 ## Lo que queda sin verificar
 
