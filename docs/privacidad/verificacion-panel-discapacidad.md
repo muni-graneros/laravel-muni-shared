@@ -221,13 +221,13 @@ Se dejan escritos porque son el mismo error de forma que este proyecto persigue
 hace catorce hallazgos: **una observación verificada en una dimensión y enunciada
 en otra más ancha.** La diferencia es que se cazaron a tiempo.
 
-## Hallazgo grave y AJENO a este trabajo: el modo oscuro del panel era ilegible
+## El modo oscuro del panel era ilegible — encontrado, entendido y arreglado
 
-Se encontró al capturar el listado ARCOP en modo oscuro, y **no lo causó este
-trabajo**: se reproduce igual en `Personas`, un recurso muy anterior.
+Se encontró al capturar el listado ARCOP en oscuro, y **no lo causó este
+trabajo**: se reproducía igual en `Personas`, un recurso muy anterior.
 
-**Qué se veía.** La tarjeta de la tabla se quedaba blanca mientras la página era
-oscura, y el texto de adentro tomaba el color del tema oscuro:
+**Qué se veía.** La tarjeta de la tabla quedaba blanca mientras la página era
+oscura, y el texto de dentro tomaba el color del tema oscuro:
 
 ```
 .fi-ta-text-item   color: rgb(255,255,255)   ← blanco
@@ -235,89 +235,80 @@ oscura, y el texto de adentro tomaba el color del tema oscuro:
 ```
 
 **Contraste 1:1.** En `Personas` desaparecían nombres, RUT, teléfonos y sector;
-en ARCOP, la fecha de recepción. No es estético: es WCAG 2.2 AA al nivel más
-básico, y los sistemas del Estado están obligados por el **Decreto N°1 / 2015
-SEGPRES**. Y era alcanzable: el panel no llamaba a `darkMode(false)`, así que
-Filament ofrecía el conmutador.
+en ARCOP, la fecha de recepción. Es WCAG 2.2 AA al nivel más básico, y los
+sistemas del Estado están obligados por el **Decreto N°1 / 2015 SEGPRES**.
 
-### La causa NO se identificó, y conviene dejar escrito qué se descartó
+### La causa
 
-Se persiguió hasta donde alcanzó la evidencia, y **todo apunta a que la regla
-correcta debería aplicarse**:
+`resources/views/filament/discapacidad/theme.blade.php` se inyecta como un
+`<style>` en el `<head>`, **sin `@layer`**. Y una regla sin capa le gana a
+cualquier regla dentro de una capa, por específica que sea. Su
 
-- El CSS publicado de Filament SÍ trae la regla:
-  `.fi-ta-ctn:where(.dark,.dark *){background-color:var(--gray-900)}`.
-- Está en la **misma capa** (`components`) y **después** de la regla clara, con
-  **igual especificidad** y **sin `!important`** (verificado leyendo
-  `cssText` y `getPropertyPriority` desde el navegador).
-- `--gray-900` **resuelve bien en ese mismo elemento** (se comprobó pintando un
-  div de prueba dentro del contenedor).
-- `matches('.fi-ta-ctn:where(.dark, .dark *)')` devuelve **true**.
-- No hay estilo inline, ni otra hoja que redeclare el fondo del contenedor.
-- Un elemento **creado a mano** con la clase, dentro del mismo árbol, también
-  computa blanco.
+```css
+.fi-section, .fi-ta-ctn { background: var(--carta); }
+```
 
-### Y no es del ecosistema: licencias no lo tiene
+pisaba la regla oscura propia de Filament —`.fi-ta-ctn:where(.dark,.dark *)`,
+que vive en `@layer components`— y `--carta` solo tenía valor claro.
 
-La prueba que más acota. Se creó **el mismo elemento sintético** (`<div
-class="fi-ta-ctn">`) en los dos sistemas, con `html.dark` puesto:
+Eso explica también el aspecto **mixto** que se veía: el encabezado de la tabla
+salía oscuro (`muni-ui` sí trae `.dark .fi-ta-header-cell`) y el cuerpo blanco.
 
-| Sistema | Filament | Fondo computado |
-|---|---|---|
-| `licencias-graneros` | v5.7.1 | `oklch(0.21 0.006 285.885)` = `--gray-900` ✔ |
-| `discapacidad-graneros` | v5.6.8 | `rgb(255,255,255)` ✘ |
+### Cómo se llegó, y las tres hipótesis que fueron falsas
 
-Mismo selector, misma clase, resultado opuesto. **El defecto es de disc, no del
-ecosistema ni de Filament en general**, y la diferencia visible es la versión.
+Vale dejarlas porque cada una parecía razonable y ninguna lo era:
 
-### Qué más se descartó, midiendo
+1. **`tailwind.config.js` sin `darkMode: 'class'`.** Cierto que no lo declara,
+   pero el CSS de Filament es class-based y no tiene una sola regla
+   `prefers-color-scheme`: cambiar la estrategia no habría arreglado nada.
+2. **Assets publicados desactualizados.** Se corrió `filament:assets` y el
+   archivo quedó del mismo tamaño exacto: ya estaba al día.
+3. **La versión de Filament.** disc está en 5.6.8 y licencias en 5.7.1, y el
+   mismo elemento sintético se pintaba bien allá. Se probó **prestándole a disc
+   el CSS de licencias**: siguió blanco. No era la versión.
 
-- **Assets publicados desactualizados**: se corrió `filament:assets` de nuevo y el
-  archivo quedó **byte por byte del mismo tamaño** (604.260). Ya estaba al día.
-- **El theme de `muni-ui`** (`public/vendor/muni-ui/filament.css`): se desactivó
-  la hoja en caliente y el contenedor **siguió blanco**. No es la causa.
+Lo que sí la encontró fue **desactivar las hojas de estilo una por una** midiendo
+un `<div class="fi-ta-ctn">` creado a mano: al deshabilitar la hoja inline nº 9,
+el fondo pasaba a `--gray-900`.
 
-  Aun así conviene anotarlo aparte, porque es frágil: ese archivo **escribe el
-  modo oscuro a mano y con `!important`**, sobre una lista de selectores elegidos
-  uno a uno (`.dark .fi-body`, `.dark .fi-section`, `.dark .fi-ta-header-cell`…).
-  `.fi-ta-ctn` no está en la lista, y de ahí sale el aspecto mixto que se veía en
-  pantalla: **el encabezado de la tabla oscuro y el cuerpo blanco**. Cualquier
-  clase nueva de Filament que el paquete no enumere queda fuera del tema oscuro
-  sin que nadie se entere. Es del paquete compartido, y lo heredan los cuatro
-  sistemas Filament.
+### El arreglo
 
-**Camino de arreglo recomendado, no ejecutado**: subir disc de Filament 5.6.8 a
-5.7.1, que es la versión donde la misma prueba pasa. No se hizo acá porque
-cambiar dependencias del proyecto requiere aprobación.
+En el `.dark` del theme, **valores oscuros para los tokens**, que arregla de una
+vez todas las reglas que los usan, más las cuatro que llevaban blanco fijo
+(barra lateral, barra superior, hero y portada de login):
 
-**Y una atribución equivocada que hay que dejar corregida**: en un primer momento
-se culpó a `tailwind.config.js` por no declarar `darkMode: 'class'` (Tailwind v3
-usa `media` por omisión). Es cierto que no lo declara, pero **no es la causa**:
-el CSS de Filament es class-based y no contiene una sola regla
-`prefers-color-scheme`. Cambiar la estrategia de Tailwind no habría arreglado
-esto. La hipótesis se formó leyendo el `app.css` compilado del proyecto —donde
-las utilidades `dark:` de `muni-ui` sí compilan bajo media query— y se enunció
-sobre el panel entero. El mismo error de forma de siempre.
+```css
+.dark { --tinta:#eaf5f3; --gris:#9fb3b0; --fondo:#081418; --carta:#0f2025; --borde:#1c343a; }
+```
 
-### Lo que sí se hizo: desactivar el modo oscuro
+Medido después, en el navegador:
 
-`->darkMode(false)` en `DiscapacidadPanelProvider`, con la evidencia escrita en
-el propio código. **Es una mitigación, no un arreglo**, y así está declarado:
-mientras la causa no se entienda, ofrecer el conmutador es ofrecerle a un
-funcionario una vista donde no puede leer los datos del vecino.
+| Comprobación | Resultado |
+|---|---|
+| Contenedor de tabla en oscuro | `rgb(15,32,37)` ✔ |
+| Texto de celda sobre él | **16,75:1** (AA pide 4,5) |
+| Modo claro, sin regresión | **7,31:1**, contenedor blanco |
+| Conmutador de tema | vuelve a estar disponible |
 
-Verificado después del cambio, en el navegador:
+Y dos cosas que aparecieron al revisar el resto:
 
-- El conmutador de tema **desaparece** de la interfaz.
-- `html` ya no recibe la clase `dark`.
-- **A quien ya tenía oscuro guardado se le fuerza claro**: se puso
-  `localStorage.theme = 'dark'` a mano y tras recargar volvió a `light`. Era la
-  regresión que importaba, porque un funcionario que hubiera cambiado el tema
-  antes seguiría viendo la pantalla rota.
-- El modo claro queda intacto: la tabla de `Personas` muestra otra vez documento,
-  nombres, apellidos, teléfono, sector y discapacidad.
+- **El lienzo del login seguía crema** con la tarjeta oscura encima:
+  `muni-ui-filament.css` fija `.fi-simple-layout { background:#f8f5ec !important }`
+  sin variante oscura. Se igualó la fuerza con un `.dark` local. *(De paso: ese
+  mismo `!important` viene pisando también en claro el lienzo teal que disc
+  pretendía — queda anotado, no se tocó el paquete.)*
+- **El foco de teclado no llegaba al contraste exigido en oscuro.** El anillo de
+  `muni-ui` es petróleo al 18%, pensado contra papel claro: sobre superficie
+  oscura daba ~1,1:1 el halo y ~1,9:1 el borde, bajo el 3:1 que piden 1.4.11 y
+  2.4.11. Con `--teal-3` el borde de foco quedó medido en **12,57:1**.
 
-Se revierte en cuanto el modo oscuro se pueda verificar legible.
+### Lo que esto deja para el paquete compartido
+
+`muni-ui-filament.css` **escribe el modo oscuro a mano y con `!important`**, sobre
+una lista de selectores enumerados uno a uno. Cualquier clase que no esté en esa
+lista queda fuera del tema oscuro sin que nadie se entere —`.fi-ta-ctn` y
+`.fi-simple-layout` son dos ejemplos encontrados hoy—, y lo heredan los cuatro
+sistemas Filament del ecosistema. Conviene revisarlo ahí y no parche por parche.
 
 ## Lo que queda sin verificar
 
