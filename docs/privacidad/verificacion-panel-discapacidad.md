@@ -257,6 +257,39 @@ correcta debería aplicarse**:
 - Un elemento **creado a mano** con la clase, dentro del mismo árbol, también
   computa blanco.
 
+### Y no es del ecosistema: licencias no lo tiene
+
+La prueba que más acota. Se creó **el mismo elemento sintético** (`<div
+class="fi-ta-ctn">`) en los dos sistemas, con `html.dark` puesto:
+
+| Sistema | Filament | Fondo computado |
+|---|---|---|
+| `licencias-graneros` | v5.7.1 | `oklch(0.21 0.006 285.885)` = `--gray-900` ✔ |
+| `discapacidad-graneros` | v5.6.8 | `rgb(255,255,255)` ✘ |
+
+Mismo selector, misma clase, resultado opuesto. **El defecto es de disc, no del
+ecosistema ni de Filament en general**, y la diferencia visible es la versión.
+
+### Qué más se descartó, midiendo
+
+- **Assets publicados desactualizados**: se corrió `filament:assets` de nuevo y el
+  archivo quedó **byte por byte del mismo tamaño** (604.260). Ya estaba al día.
+- **El theme de `muni-ui`** (`public/vendor/muni-ui/filament.css`): se desactivó
+  la hoja en caliente y el contenedor **siguió blanco**. No es la causa.
+
+  Aun así conviene anotarlo aparte, porque es frágil: ese archivo **escribe el
+  modo oscuro a mano y con `!important`**, sobre una lista de selectores elegidos
+  uno a uno (`.dark .fi-body`, `.dark .fi-section`, `.dark .fi-ta-header-cell`…).
+  `.fi-ta-ctn` no está en la lista, y de ahí sale el aspecto mixto que se veía en
+  pantalla: **el encabezado de la tabla oscuro y el cuerpo blanco**. Cualquier
+  clase nueva de Filament que el paquete no enumere queda fuera del tema oscuro
+  sin que nadie se entere. Es del paquete compartido, y lo heredan los cuatro
+  sistemas Filament.
+
+**Camino de arreglo recomendado, no ejecutado**: subir disc de Filament 5.6.8 a
+5.7.1, que es la versión donde la misma prueba pasa. No se hizo acá porque
+cambiar dependencias del proyecto requiere aprobación.
+
 **Y una atribución equivocada que hay que dejar corregida**: en un primer momento
 se culpó a `tailwind.config.js` por no declarar `darkMode: 'class'` (Tailwind v3
 usa `media` por omisión). Es cierto que no lo declara, pero **no es la causa**:
