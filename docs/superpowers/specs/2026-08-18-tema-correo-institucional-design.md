@@ -84,8 +84,9 @@ su variante oscura `#00404c`.
    nada por omisión y `composer update` propaga las correcciones. Quien necesite
    desviarse publica sus archivos y esos ganan.
 4. **Alcance: tema más las tres vistas de autenticación**, instalado y
-   verificado en web-graneros. Los otros ocho sistemas quedan con su plan de
-   adopción escrito.
+   verificado en web-graneros primero, y adoptado después en los ocho sistemas
+   restantes. La adopción entró al alcance el 2026-08-18, después de escribir
+   este documento; se hace por sistema, cada uno con su prueba de envío.
 5. **Modo oscuro a prueba de inversión y con reglas explícitas.** Apple Mail y
    Outlook moderno respetan `prefers-color-scheme`; Gmail invierte por su cuenta
    ignorando esas reglas. Se cubren los dos casos.
@@ -203,8 +204,6 @@ En web-graneros:
 
 ## Fuera de alcance
 
-- La adopción en los otros ocho sistemas. Cada uno necesita su verificación de
-  envío; queda el plan escrito.
 - Unificar las vistas de contenido propias de cada sistema, más allá de las tres
   de autenticación.
 - El paquete `laravel-muni-ui` y el diseño del panel.
@@ -215,13 +214,18 @@ En web-graneros:
 
 ## Riesgos
 
-**Feria y discapacidad no cambian en esta entrega, y eso es deliberado.**
-Conservan sus copias publicadas, que siguen ganando sobre el paquete, así que
-sus correos salen exactamente igual que hoy —con los dos defectos de contraste
-incluidos—. Heredarán la versión corregida cuando se borren esas copias, que es
-trabajo de la adopción y va con sus propias capturas de antes y después. Vale la
-pena tenerlo presente: hasta entonces conviven dos temas `graneros` distintos en
-el ecosistema, el del paquete y el copiado.
+**Feria y discapacidad cambian de aspecto, y hay que capturarlo.** Son los dos
+sistemas que hoy usan el tema copiado. Mientras conserven sus copias publicadas
+no cambia nada, porque lo publicado gana sobre el paquete; el cambio ocurre en
+el momento exacto en que se borran esas copias. Ahí heredan la versión
+corregida: otro color de botón y de pie. Es el objetivo, pero pide capturas de
+antes y después, y son los dos únicos sistemas donde alguien podría notar la
+diferencia de un día para otro.
+
+**Entre la publicación del paquete y la adopción conviven dos temas `graneros`.**
+El del paquete y el copiado en feria y discapacidad, que ya no son iguales. Es
+transitorio y esperado, pero explica por qué dos sistemas se ven distintos
+mientras dura.
 
 **El escudo depende de `APP_URL`.** Si un sistema lo tiene mal en producción, la
 imagen no carga. La cabecera está diseñada para sobrevivir a eso, así que
