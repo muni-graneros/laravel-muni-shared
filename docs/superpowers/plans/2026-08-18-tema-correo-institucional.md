@@ -485,7 +485,7 @@ El tercer caso es el que importa para no romper nada: un sistema con vista propi
 - [ ] **Step 3: Correr la prueba para verla fallar**
 
 Run: `vendor/bin/phpunit --filter=VistasAuthTest`
-Expected: FALLA — el espacio de nombres `muni-mail::` no existe todavía.
+Expected: FALLA — el espacio de nombres `muni-mail-emails::` no existe todavía.
 
 - [ ] **Step 4: Registrar el espacio de nombres**
 
