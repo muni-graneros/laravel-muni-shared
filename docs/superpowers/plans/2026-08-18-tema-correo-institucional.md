@@ -401,7 +401,7 @@ de correctos contrastan mejor."
 
 **Interfaces:**
 - Consumes: el tema de las tareas 1 y 2.
-- Produces: el espacio de nombres de vistas `muni-mail::`, y `SystemNotification::correo()` con resolución por respaldo. La Tarea 4 depende de que el respaldo funcione.
+- Produces: el espacio de nombres de vistas `muni-mail-emails::`, y `SystemNotification::correo()` con resolución por respaldo. La Tarea 4 depende de que el respaldo funcione.
 
 - [ ] **Step 1: Copiar las vistas**
 
@@ -432,7 +432,7 @@ class VistasAuthTest extends TestCase
     {
         foreach (['mfa', 'bienvenida', 'restablecer-contrasena'] as $vista) {
             $this->assertTrue(
-                view()->exists("muni-mail::emails.auth.{$vista}"),
+                view()->exists("muni-mail-emails::auth.{$vista}"),
                 "Falta la vista {$vista} en el paquete"
             );
         }
@@ -836,4 +836,4 @@ git commit -m "docs: cómo quedó la adopción del tema de correo en el ecosiste
 
 **Sin marcadores de posición.** Todos los pasos de código llevan el código. Donde hay que leer un archivo antes de escribir algo —las variables que pide una vista— el paso lo dice y da el comando.
 
-**Consistencia de nombres.** El espacio de nombres de vistas es `muni-mail-emails::` en el `loadViewsFrom` de la Tarea 3 y en `SystemNotification::correo()`. La etiqueta de publicación es `muni-mail-views` en las tareas 1 y 3, para el tema y para las vistas: una sola etiqueta publica ambos. La prueba de la Tarea 3 comprueba `view()->exists('muni-mail::...')`, que **no** coincide con el espacio de nombres registrado: se corrige a `muni-mail-emails::emails.auth.{vista}` al ejecutar el Paso 2 de esa tarea.
+**Consistencia de nombres.** El espacio de nombres de vistas es `muni-mail-emails::` en el `loadViewsFrom` de la Tarea 3 y en `SystemNotification::correo()`. La etiqueta de publicación es `muni-mail-views` en las tareas 1 y 3, para el tema y para las vistas: una sola etiqueta publica ambos. La prueba de la Tarea 3 comprueba `view()->exists('muni-mail-emails::auth.{vista}')`, que coincide con el `loadViewsFrom(__DIR__.'/../resources/views/emails', 'muni-mail-emails')` del Paso 4: la raíz del espacio de nombres es `resources/views/emails`, así que dentro de él la vista es `auth.mfa` y no `emails.auth.mfa`.
