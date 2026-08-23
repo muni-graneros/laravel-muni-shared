@@ -73,8 +73,24 @@ encargado sin contrato al día, y el responsable incompleto (ver hallazgo 1).
 
 `privacidad:aplicar-retencion` corre **en simulación por defecto** y exige
 `--ejecutar` para tocar algo. Es el default correcto para un comando destructivo.
-Su respuesta hoy es «no hay titulares con plazo de retención vencido», coherente
-con los 120 meses de `registro_comunal`.
+
+Su respuesta fue «no hay titulares con plazo de retención vencido», y acá va una
+**corrección a la lectura que se hizo ese día**: se atribuyó a los 120 meses de
+`registro_comunal`, sin comprobarlo. Esa frase sale igual cuando el enlace de
+`ResuelveTitularesVencidos` es el default `NingunTitularVencido`, que devuelve
+lista vacía siempre. Son dos causas distintas —«nadie venció todavía» y «este
+sistema no sabe quién venció»— con la misma salida en pantalla, y no se
+distinguieron.
+
+En la rama de adopción el contrato **sí** está enlazado a
+`TitularesVencidosPorAtencion` (verificado leyendo el `AppServiceProvider` de
+`feat/privacidad-21719`), así que la conclusión resultó ser correcta por
+casualidad, no por haberla verificado. Es el mismo error de forma que este
+documento persigue, cometido por quien lo escribió.
+
+Lo que lo cazó, meses después, fue `privacidad:diagnostico`: corrido contra
+`develop` —donde la adopción no está mergeada— dice en una línea que el
+resolvedor es el que nunca purga.
 
 ## Hallazgos
 
