@@ -85,6 +85,32 @@ sus datos y la advertencia desaparece sola.
 
 ---
 
+## 3-bis. Quién atiende el buzón de privacidad
+
+**Qué se decide:** qué persona o unidad abre y responde lo que llega a
+`privacidad@municipalidadgraneros.cl`.
+
+**Qué está puesto hoy:** el buzón **existe** en el inquilino como buzón
+compartido —verificado con `Get-Recipient`, no supuesto— y su dirección es la
+que queda impresa en el expediente que se le entrega al vecino para ejercer sus
+derechos.
+
+**Y hoy no lo puede abrir nadie.** `Get-MailboxPermission` devuelve la lista
+vacía una vez descontado el permiso interno por defecto: no hay ni una persona
+con acceso.
+
+**Qué pasa si nadie decide:** los correos entran a un buzón que nadie lee. Y no
+son consultas cualquiera: una solicitud ARCOP hace correr un plazo legal desde
+que llega. Un buzón huérfano es peor que no tener casilla, porque el municipio
+publicó una vía de ejercicio y la dejó sin atender — que es precisamente lo que
+una fiscalización mira.
+
+**Quién contesta:** administración municipal. Debería ser quien responda por esas
+solicitudes ante la Agencia, no el desarrollador. Dar acceso es un comando; lo
+que hay que decidir es de quién es la responsabilidad.
+
+---
+
 ## 4. Qué pasa con el historial de una persona anonimizada
 
 **Qué se decide:** si el `activity_log` histórico de un titular anonimizado se
