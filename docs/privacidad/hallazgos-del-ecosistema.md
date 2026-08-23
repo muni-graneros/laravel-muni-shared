@@ -146,6 +146,36 @@ Hallazgo nuevo del mismo tipo: `baja()` inserta en `persona_lookups` una fila co
 `rut_buscado` = el RUT real, así que **el acto de suprimir deja rastro con el
 dato personal de quien pidió que lo borraran**.
 
+## 11. El panel de discapacidad no tiene CSP
+
+Medido con `curl -I` el 2026-08-23:
+
+| URL | Cabecera |
+|---|---|
+| `http://localhost:8000/` | `Content-Security-Policy-Report-Only` |
+| `http://localhost:8000/discapacidad/login` | **ninguna** |
+
+Dos problemas, y el segundo es el grave:
+
+1. En el sitio público la política es **Report-Only**: avisa, no bloquea.
+2. **En el panel no llega ninguna.** `SecurityHeaders` se agrega al grupo `web`
+   en `bootstrap/app.php`, pero un panel de Filament declara su propia pila de
+   middleware y no hereda ese grupo — el mismo mecanismo por el que el MFA no
+   protegía nada en nueve sistemas hasta que se usó `addPersistentMiddleware`.
+
+O sea que la pantalla donde se administran los datos personales de los vecinos
+—y donde se resuelven las solicitudes ARCOP— es la única sin política de
+contenido.
+
+`web-graneros` ya lo tiene resuelto y conviene copiarlo en vez de reinventarlo:
+pone `SecurityHeaders::class` **primero** en el `->middleware([...])` del panel,
+y su CSP es **efectiva con nonce**. Resolvió además el choque entre el nonce y la
+caché de página con una técnica que vale la pena reusar: **las vistas escriben un
+marcador**, no el nonce, y el middleware lo reemplaza por uno fresco en cada
+respuesta. Así la página se puede cachear sin que el nonce quede congelado.
+
+Su `SecurityHeaders` son 156 líneas contra las 72 de discapacidad.
+
 ## 10. Nada de esto es instalable todavía
 
 Los seis `composer.lock` declaran `v1.12.1` de `laravel-muni-shared`, con
