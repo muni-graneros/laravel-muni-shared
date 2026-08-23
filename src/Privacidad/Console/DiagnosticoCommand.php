@@ -57,7 +57,9 @@ class DiagnosticoCommand extends Command
             return self::SUCCESS;
         }
 
-        $this->error('Faltan '.count($hallazgos).' cosas para que el módulo funcione:');
+        $this->error(count($hallazgos) === 1
+            ? 'Falta 1 cosa para que el módulo funcione:'
+            : 'Faltan '.count($hallazgos).' cosas para que el módulo funcione:');
         $this->line('');
 
         foreach ($hallazgos as $i => $hallazgo) {

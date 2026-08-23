@@ -49,6 +49,37 @@ it('un sistema recién instalado sale reprobado y dice exactamente qué le falta
         ->toContain('NingunTitularVencido');
 });
 
+it('cuenta en singular cuando falta una sola cosa', function (): void {
+    // Sale en pantalla de un funcionario. «Faltan 1 cosas» es el tipo de detalle
+    // que hace dudar de lo que el resto del informe dice.
+    config([
+        'privacidad.sistema' => 'demo',
+        'privacidad.responsable.nombre' => 'Municipalidad de Prueba',
+        'privacidad.responsable.contacto' => 'privacidad@example.cl',
+        'privacidad.responsable.delegado' => 'Delegada de Prueba',
+        'privacidad.disco_evidencia' => 'local',
+    ]);
+
+    Finalidad::create([
+        'sistema' => 'demo',
+        'codigo' => 'registro',
+        'nombre' => 'Registro',
+        'descripcion' => 'Registro de prueba',
+        'base_licitud' => BaseLicitud::FuncionLegal,
+        'norma_habilitante' => 'Ley de prueba, art. 1',
+        'plazo_retencion_meses' => 12,
+        'activa' => true,
+    ]);
+
+    app()->bind(PropagaSupresion::class, SupresionSoloLocal::class);
+
+    Artisan::call('privacidad:diagnostico');
+
+    expect(Artisan::output())
+        ->toContain('Falta 1 cosa para')
+        ->not->toContain('Faltan 1');
+});
+
 it('nombra el contrato de supresión cuando no está declarado, porque sin él la retención se niega a correr', function (): void {
     config(['privacidad.sistema' => 'demo']);
 
