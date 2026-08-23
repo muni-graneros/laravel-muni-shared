@@ -11,6 +11,7 @@ use Muni\Shared\Console\ProbarCorreoCommand;
 use Muni\Shared\Correo\TransporteGraph;
 use Muni\Shared\Privacidad\BitacoraEnBaseDeDatos;
 use Muni\Shared\Privacidad\Console\AplicarRetencionCommand;
+use Muni\Shared\Privacidad\Console\DiagnosticoCommand;
 use Muni\Shared\Privacidad\Console\ExportarRatCommand;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Contratos\ResuelveTitularesVencidos;
@@ -74,6 +75,7 @@ class MuniSharedServiceProvider extends ServiceProvider
                 ProbarCorreoCommand::class,
                 ConfigurarCorreoCommand::class,
                 AplicarRetencionCommand::class,
+                DiagnosticoCommand::class,
                 ExportarRatCommand::class,
             ]);
         }
