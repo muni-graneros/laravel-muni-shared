@@ -122,9 +122,22 @@ class DiagnosticoCommand extends Command
             return [];
         }
 
+        // La consecuencia se redacta según lo que FALTA, no en general: decirle
+        // «el expediente sale con el contacto en blanco» a quien ya configuró el
+        // contacto es una afirmación falsa, y este comando existe para que
+        // alguien le crea.
+        $faltaContacto = $faltantes->has('contacto');
+        $faltaSoloDelegado = ! $faltaContacto && $faltantes->has('delegado');
+
+        $consecuencia = match (true) {
+            $faltaContacto => 'El expediente que se le entrega al titular sale con el contacto en blanco: el vecino recibe un documento que no le dice a quién dirigirse para ejercer sus derechos.',
+            $faltaSoloDelegado => 'El expediente sale sin identificar al delegado de protección de datos. La ley pide saber a QUIÉN responde el tratamiento, y designarlo es un acto del municipio: no se resuelve poniendo el mismo correo de contacto, porque es una persona y no un buzón.',
+            default => 'El RAT no identifica al responsable del tratamiento, que es lo primero que se pregunta ante un reclamo.',
+        };
+
         return [[
             'titulo' => 'El responsable del tratamiento está incompleto: falta '.$faltantes->values()->implode(', ').'.',
-            'consecuencia' => 'El expediente que se le entrega al titular sale con el contacto en blanco: el vecino recibe un documento que no le dice a quién dirigirse para ejercer sus derechos.',
+            'consecuencia' => $consecuencia,
             'arreglo' => 'Definir esas variables en el .env. Qué correo y qué persona van ahí lo decide el municipio.',
         ]];
     }

@@ -80,6 +80,26 @@ it('cuenta en singular cuando falta una sola cosa', function (): void {
         ->not->toContain('Faltan 1');
 });
 
+it('no acusa al contacto de estar en blanco cuando el que falta es el delegado', function (): void {
+    // El texto se leyó en una corrida real diciendo «el expediente sale con el
+    // contacto en blanco» sobre un sistema que ya tenía el contacto puesto. Una
+    // herramienta que existe para que le crean no puede afirmar de más.
+    config([
+        'privacidad.sistema' => 'demo',
+        'privacidad.responsable.nombre' => 'Municipalidad de Prueba',
+        'privacidad.responsable.contacto' => 'privacidad@example.cl',
+        'privacidad.responsable.delegado' => null,
+    ]);
+
+    Artisan::call('privacidad:diagnostico');
+    $texto = Artisan::output();
+
+    expect($texto)
+        ->toContain('PRIVACIDAD_DELEGADO')
+        ->toContain('es una persona y no un buzón')
+        ->not->toContain('contacto en blanco');
+});
+
 it('nombra el contrato de supresión cuando no está declarado, porque sin él la retención se niega a correr', function (): void {
     config(['privacidad.sistema' => 'demo']);
 
