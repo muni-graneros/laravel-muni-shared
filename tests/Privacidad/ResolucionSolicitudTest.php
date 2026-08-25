@@ -80,7 +80,7 @@ it('exportar desde la solicitud deja evidencia con los campos, nunca con los val
         ])
         // La entrega del expediente completo queda ligada al titular concreto:
         // sin eso no hay forma de reconstruir a quién se le entregó qué.
-        ->and($entrada->titular_id)->toBe($this->titular->id);
+        ->and($entrada->titular_id)->toEqual($this->titular->id);
 });
 
 it('no exporta el expediente por una solicitud que no es de acceso ni de portabilidad', function () {

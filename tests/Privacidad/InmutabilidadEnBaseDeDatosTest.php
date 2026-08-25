@@ -134,7 +134,10 @@ it('el motor rechaza mudar la entrada a otro titular', function () {
 
     expect(fn () => DB::table('privacidad_bitacora')->update(['titular_id' => 4242]))
         ->toThrow(QueryException::class)
-        ->and(EntradaBitacora::sole()->titular_id)->toBe(1);
+        // `toEqual` y no `toBe`: desde que el morph admite claves no numéricas
+        // (un RUT como clave primaria), la columna es texto, y un id numérico
+        // vuelve de la base como '1'.
+        ->and(EntradaBitacora::sole()->titular_id)->toEqual(1);
 });
 
 it('el motor rechaza volver a colgar de un titular una fila ya anonimizada', function () {

@@ -223,7 +223,7 @@ it('un documento que no se pudo borrar aborta la anonimización en vez de darla 
             // que permite reintentar y encontrarlo.
             ->and($consentimiento->evidencia_path)->toBe('consentimientos/11111111-1.pdf')
             // Y nada del barrido quedó a medio aplicar.
-            ->and($consentimiento->titular_id)->toBe($this->titular->getKey())
+            ->and($consentimiento->titular_id)->toEqual($this->titular->getKey())
             ->and(EntradaBitacora::where('evento', 'bitacora.desvinculada')->count())->toBe(0)
             ->and(EntradaBitacora::whereNotNull('titular_ref')->count())->toBe(0);
     } finally {
@@ -293,7 +293,7 @@ it('disco_evidencia en blanco truena apenas hay un documento que borrar, no lo d
 
     // Y la transacción se revierte entera, igual que con ArchivoNoSuprimido:
     // ni la fila queda huérfana ni la constancia dice que se desvinculó.
-    expect(Consentimiento::sole()->titular_id)->toBe($this->titular->getKey())
+    expect(Consentimiento::sole()->titular_id)->toEqual($this->titular->getKey())
         ->and(EntradaBitacora::where('evento', 'bitacora.desvinculada')->count())->toBe(0);
 });
 

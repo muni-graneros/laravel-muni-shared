@@ -120,6 +120,30 @@ Quien implemente el buscador tiene dos obligaciones que el módulo no puede
 imponer por código: **mínimo de caracteres y resultados acotados**. Ese buscador
 es la superficie por donde se puede enumerar el padrón de un municipio.
 
+### Titulares con clave no numérica (desde v1.15.0)
+
+`titular_id` es **texto** (64) en las tablas del módulo, no un entero. Nació
+entero porque los primeros sistemas identifican a la persona por un id
+autoincremental; `atencionvecino` usa el RUT como clave primaria y MariaDB
+truncaba «11111111-1» a 11111111 al escribirlo: la solicitud quedaba apuntando a
+un titular que no era el que vino al mesón.
+
+Un número sigue cabiendo, así que **ningún sistema que ya guarde ids numéricos
+cambia de comportamiento**. Lo único que cambia es el tipo que devuelve PHP:
+
+```php
+$solicitud->titular_id === $persona->id   // antes true, ahora FALSE ('1' !== 1)
+$solicitud->titular_id == $persona->id    // true
+```
+
+Si un sistema compara con `===` contra un id numérico, hay que castear. En el
+propio módulo no queda ninguna comparación así.
+
+La migración repone los guardias de inmutabilidad después de cambiar el tipo:
+en SQLite un `change()` reconstruye la tabla y **se lleva los triggers**, o sea
+que dejaría la evidencia legal sin protección en silencio. MariaDB no tiene ese
+problema.
+
 ### Instalar en un sistema
 
 ```bash
