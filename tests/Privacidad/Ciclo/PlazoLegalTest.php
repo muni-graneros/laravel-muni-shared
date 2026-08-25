@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Str;
 use Muni\Shared\Privacidad\BaseLicitud;
 use Muni\Shared\Privacidad\Ciclo\EstadoDePlazo;
 use Muni\Shared\Privacidad\Ciclo\PlazoLegal;
@@ -31,7 +32,7 @@ beforeEach(function () {
             'estado' => $estado,
             'titular_type' => $this->titular->getMorphClass(),
             'titular_id' => $this->titular->getKey(),
-            'titular_ref' => hash('sha256', '11.111.111-1'),
+            'titular_ref' => Str::random(32),
             'detalle' => 'Pide copia de su ficha.',
             'solicitante' => Solicitante::Titular,
             'verificacion_identidad' => ['medio' => 'cedula_presencial'],

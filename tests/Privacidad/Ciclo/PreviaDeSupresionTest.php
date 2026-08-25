@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Str;
 use Muni\Shared\Privacidad\BaseLicitud;
 use Muni\Shared\Privacidad\Ciclo\PreviaDeSupresion;
 use Muni\Shared\Privacidad\EstadoDeSolicitud;
@@ -29,7 +30,7 @@ beforeEach(function () {
         'estado' => EstadoDeSolicitud::EnTramite,
         'titular_type' => $this->titular->getMorphClass(),
         'titular_id' => $this->titular->getKey(),
-        'titular_ref' => hash('sha256', '11.111.111-1'),
+        'titular_ref' => Str::random(32),
         'detalle' => 'Pide que borren sus datos.',
         'solicitante' => Solicitante::Titular,
         'verificacion_identidad' => ['medio' => 'cedula_presencial'],

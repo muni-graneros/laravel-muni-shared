@@ -1,5 +1,6 @@
 <?php
 
+use Illuminate\Support\Str;
 use Muni\Shared\Privacidad\BaseLicitud;
 use Muni\Shared\Privacidad\Ciclo\EtiquetaDeTitular;
 use Muni\Shared\Privacidad\EstadoDeSolicitud;
@@ -30,7 +31,7 @@ beforeEach(function () {
             'estado' => EstadoDeSolicitud::Recibida,
             'titular_type' => $titular?->getMorphClass() ?? PersonaDePrueba::class,
             'titular_id' => $titular?->getKey(),
-            'titular_ref' => hash('sha256', '11.111.111-1'),
+            'titular_ref' => Str::random(32),
             'detalle' => 'Pide copia de su ficha.',
             'solicitante' => Solicitante::Titular,
             'verificacion_identidad' => ['medio' => 'cedula_presencial'],

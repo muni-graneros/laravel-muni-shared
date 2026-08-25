@@ -89,6 +89,37 @@ Cubre el registro de actividades de tratamiento, el consentimiento por
 finalidad, los derechos ARCOP con control de plazo, la retención con supresión
 efectiva y el registro de brechas.
 
+### El núcleo del ciclo ARCOP (`Muni\Shared\Privacidad\Ciclo`)
+
+Las reglas del ciclo ARCOP que ANTES vivían dentro del panel de Filament
+(`SolicitudResource`, en `laravel-muni-ui`). Están acá porque tienen consecuencia
+legal y hay más de un panel: el de Filament y el de Blade
+(`laravel-arcop-panel`). Dos implementaciones de la misma regla divergen, y
+divergir acá es certificarle por escrito a un vecino algo que no ocurrió.
+
+Ninguna devuelve presentación: entregan un enum o un objeto de hechos, y cada
+panel elige el color y la redacción.
+
+| Clase | Qué decide |
+|---|---|
+| `PlazoLegal` / `EstadoDePlazo` | El semáforo de plazo. `PlazoLegal::DIAS_POR_VENCER` es el umbral único, y `Solicitud::scopePorVencer()` lo toma de ahí. Una solicitud resuelta no tiene plazo. |
+| `SeparacionDeFunciones` | Si quien va a resolver es quien recibió. Es aviso, no prohibición. Quién resuelve llega por parámetro, no de `auth()`. |
+| `ResultadosDisponibles` | Con qué resultados se puede cerrar a mano cada tipo. Una rectificación y una supresión solo se pueden **rechazar** a mano: acogerlas es ejecutar la acción que escribe y propaga. |
+| `EtiquetaDeTitular` | Cómo se nombra al titular, distinguiendo caso anonimizado, titular huérfano y titular vivo. |
+| `AlcanceDelCese` | Qué deja de hacer el sistema con un bloqueo vigente, y qué le pasa al bloqueo según cómo se resolvió (acoger una **oposición** lo vuelve definitivo, no lo levanta). Sin declarar, dice que no se declaró. |
+| `PreviaDeSupresion` | Hasta dónde llega el derecho **antes** de tocar nada. No escribe. |
+| `ResumenDeSupresion` | Los hechos de una supresión: total o parcial, archivos borrados, rutas sin archivo, y si el maestro de personas aceptó la baja. Suprimir local ≠ salir del ecosistema. |
+
+El contrato `BuscaTitulares` también vive acá
+(`Muni\Shared\Privacidad\Contratos\BuscaTitulares`): se movió desde
+`Muni\Ui\Filament\Privacidad\Contratos`, donde un panel sin Filament no lo
+podía implementar. En `muni-ui` queda un alias deprecado que lo extiende, así que
+un adoptante que ya lo implementaba no se rompe.
+
+Quien implemente el buscador tiene dos obligaciones que el módulo no puede
+imponer por código: **mínimo de caracteres y resultados acotados**. Ese buscador
+es la superficie por donde se puede enumerar el padrón de un municipio.
+
 ### Instalar en un sistema
 
 ```bash
