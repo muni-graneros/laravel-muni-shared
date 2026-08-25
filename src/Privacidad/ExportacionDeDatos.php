@@ -2,6 +2,7 @@
 
 namespace Muni\Shared\Privacidad;
 
+use Muni\Shared\Privacidad\Ciclo\EntregaDeCopia;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Contratos\TitularDeDatos;
 use Muni\Shared\Privacidad\Modelos\Solicitud;
@@ -32,15 +33,14 @@ class ExportacionDeDatos
      */
     public function paraSolicitud(Solicitud $solicitud): array
     {
-        // Solo acceso y portabilidad dan derecho a la copia completa. Una
-        // solicitud de supresión u oposición no habilita a nadie a llevarse el
-        // expediente, y tomar el tipo del request sin verificarlo convertiría
-        // cualquier solicitud registrada en una llave universal.
-        if (! in_array($solicitud->tipo, [TipoDeSolicitud::Acceso, TipoDeSolicitud::Portabilidad], true)) {
-            throw new ResolucionInvalida(
-                "La solicitud #{$solicitud->getKey()} es de tipo «{$solicitud->tipo->etiqueta()}»: "
-                .'solo el acceso y la portabilidad dan derecho a la copia de los datos.',
-            );
+        // Las tres reglas —qué tipo da derecho, qué estado lo niega y que haya
+        // titular vigente— viven en `EntregaDeCopia`, para que los paneles
+        // puedan PREGUNTAR antes de ofrecer el botón en vez de descubrirlo con
+        // una excepción cuando el funcionario ya lo apretó delante del vecino.
+        $motivo = EntregaDeCopia::porQueNo($solicitud);
+
+        if ($motivo !== null) {
+            throw new ResolucionInvalida($motivo);
         }
 
         $titular = $solicitud->titular;
