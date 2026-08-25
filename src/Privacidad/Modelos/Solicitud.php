@@ -6,6 +6,7 @@ use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Carbon;
+use Muni\Shared\Privacidad\Ciclo\PlazoLegal;
 use Muni\Shared\Privacidad\EstadoDeSolicitud;
 use Muni\Shared\Privacidad\Solicitante;
 use Muni\Shared\Privacidad\TipoDeSolicitud;
@@ -70,7 +71,7 @@ class Solicitud extends Model
     }
 
     /** @param Builder<Solicitud> $query */
-    public function scopePorVencer(Builder $query, int $dias = 5): void
+    public function scopePorVencer(Builder $query, int $dias = PlazoLegal::DIAS_POR_VENCER): void
     {
         $query->pendientes()
             ->whereBetween('vence_en', [now(), now()->addDays($dias)]);
