@@ -34,14 +34,43 @@ final class Geocoder
     /**
      * Busca coordenadas para una dirección dentro de Graneros, Chile.
      *
-     * Intenta en cascada (de más preciso a más aproximado) porque OSM no siempre
-     * tiene el número de calle en pueblos chicos: dirección completa → sin el
-     * número → solo el sector. Devuelve la primera que resuelva, marcando si es
-     * aproximada para que la UI invite a ajustar el pin.
+     * Devuelve `null` tanto si la dirección no existe como si no se pudo
+     * preguntar: es el contrato que todos los sistemas del ecosistema esperan
+     * desde el principio y se conserva. Quien necesite distinguir los dos casos
+     * (un job en cola que debe reintentar si el proveedor está caído) usa
+     * {@see buscarEstricto()}.
      *
      * @return array{lat: float, lng: float, nombre: string, aproximado: bool}|null
      */
     public static function buscar(?string $direccion, ?string $sector = null): ?array
+    {
+        try {
+            return self::buscarEstricto($direccion, $sector);
+        } catch (GeocoderNoDisponible) {
+            // Ya quedó en el log al fallar la consulta; acá solo se preserva el
+            // contrato de siempre.
+            return null;
+        }
+    }
+
+    /**
+     * Igual que {@see buscar()}, pero «no encontré la dirección» y «no pude
+     * preguntar» dejan de parecerse: `null` solo cuando Nominatim respondió y no
+     * conoce la dirección; {@see GeocoderNoDisponible} cuando no hubo respuesta
+     * (red caída, error del proveedor o límite local de peticiones alcanzado).
+     *
+     * Intenta en cascada (de más preciso a más aproximado) porque OSM no siempre
+     * tiene el número de calle en pueblos chicos: dirección completa → sin el
+     * número → solo el sector. Devuelve la primera que resuelva, marcando si es
+     * aproximada para que la UI invite a ajustar el pin. Si una consulta de la
+     * cascada falla por el proveedor, no se sigue con las demás: la red caída no
+     * se arregla probando con menos texto.
+     *
+     * @return array{lat: float, lng: float, nombre: string, aproximado: bool}|null
+     *
+     * @throws GeocoderNoDisponible
+     */
+    public static function buscarEstricto(?string $direccion, ?string $sector = null): ?array
     {
         $direccion = trim((string) $direccion);
         $sector = trim((string) $sector);
@@ -51,11 +80,24 @@ final class Geocoder
         }
 
         // Auditoría 3.5 — Caché por dirección normalizada: una dirección ya resuelta
-        // no se vuelve a pedir a Nominatim. Solo se cachean aciertos (los fallos se
-        // reintentan). TTL largo: la geolocalización de una calle no cambia.
+        // no se vuelve a pedir a Nominatim. Solo se cachean aciertos: ni el «no
+        // existe» ni —sobre todo— un fallo del proveedor, que de quedar guardado
+        // convertiría un corte de un minuto en 30 días de «esa calle no está».
+        // TTL largo: la geolocalización de una calle no cambia.
         $clave = 'geocoder:'.md5(mb_strtolower($direccion.'|'.$sector));
 
-        return Cache::remember($clave, now()->addDays(30), fn () => self::resolver($direccion, $sector));
+        $cacheado = Cache::get($clave);
+        if (is_array($cacheado)) {
+            return $cacheado;
+        }
+
+        $resultado = self::resolver($direccion, $sector);
+
+        if ($resultado !== null) {
+            Cache::put($clave, $resultado, now()->addDays(30));
+        }
+
+        return $resultado;
     }
 
     /**
@@ -75,7 +117,24 @@ final class Geocoder
         // Caché por consulta normalizada: el type-ahead repite mucho los mismos prefijos.
         $clave = 'geocoder:sug:'.md5(mb_strtolower($q));
 
-        return Cache::remember($clave, now()->addHours(12), fn () => self::consultarPhoton($q, $limite));
+        $cacheadas = Cache::get($clave);
+        if (is_array($cacheadas)) {
+            return $cacheadas;
+        }
+
+        $sugerencias = self::consultarPhoton($q, $limite);
+
+        // Un fallo (red, error del proveedor, límite local) devuelve lista vacía
+        // al que escribe, pero NO se guarda: cacheado 12 horas, un corte de un
+        // minuto dejaba ese prefijo sin sugerencias medio día. Una lista vacía
+        // que Photon devolvió de verdad sí se guarda: es un «no hay» legítimo.
+        if ($sugerencias === null) {
+            return [];
+        }
+
+        Cache::put($clave, $sugerencias, now()->addHours(12));
+
+        return $sugerencias;
     }
 
     /**
@@ -95,15 +154,18 @@ final class Geocoder
     }
 
     /**
-     * @return list<array{valor: string, label: string}>
+     * `null` cuando no se pudo preguntar (para que el que llama no lo cachee);
+     * lista —vacía o no— cuando Photon respondió.
+     *
+     * @return list<array{valor: string, label: string}>|null
      */
-    private static function consultarPhoton(string $q, int $limite): array
+    private static function consultarPhoton(string $q, int $limite): ?array
     {
         // Etiqueta de uso responsable de Photon: tope ~120 consultas/min.
         if (RateLimiter::tooManyAttempts('geocoder:photon', 120)) {
             Log::warning('Geocoder: límite de peticiones a Photon alcanzado; se omiten sugerencias.');
 
-            return [];
+            return null;
         }
         RateLimiter::hit('geocoder:photon', 60);
 
@@ -121,11 +183,13 @@ final class Geocoder
         } catch (\Throwable $e) {
             Log::warning('Geocoder: fallo de red al consultar Photon.', ['error' => $e->getMessage()]);
 
-            return [];
+            return null;
         }
 
         if (! $respuesta->ok()) {
-            return [];
+            Log::warning('Geocoder: respuesta no OK de Photon.', ['status' => $respuesta->status()]);
+
+            return null;
         }
 
         $items = [];
@@ -204,7 +268,11 @@ final class Geocoder
     }
 
     /**
+     * Una consulta a Nominatim. `null` solo cuando respondió y no encontró nada.
+     *
      * @return array{lat: float, lng: float, nombre: string}|null
+     *
+     * @throws GeocoderNoDisponible si no se pudo preguntar
      */
     private static function consultar(string $consulta): ?array
     {
@@ -216,7 +284,7 @@ final class Geocoder
             // el límite de Nominatim (señal de uso anómalo o ráfaga de geocodificación).
             Log::warning('Geocoder: límite de peticiones a Nominatim alcanzado; se omite la consulta.');
 
-            return null;
+            throw new GeocoderNoDisponible('Límite local de peticiones a Nominatim alcanzado; reintentar más tarde.');
         }
         RateLimiter::hit('geocoder:nominatim', 60);
 
@@ -232,13 +300,13 @@ final class Geocoder
         } catch (\Throwable $e) {
             Log::warning('Geocoder: fallo de red al consultar Nominatim.', ['error' => $e->getMessage()]);
 
-            return null;
+            throw new GeocoderNoDisponible('Fallo de red al consultar Nominatim.', 0, $e);
         }
 
         if (! $respuesta->ok()) {
             Log::warning('Geocoder: respuesta no OK de Nominatim.', ['status' => $respuesta->status()]);
 
-            return null;
+            throw new GeocoderNoDisponible("Nominatim respondió {$respuesta->status()}.");
         }
 
         $primero = $respuesta->json()[0] ?? null;

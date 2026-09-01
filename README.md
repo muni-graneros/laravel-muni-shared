@@ -46,6 +46,25 @@ github-oauth`). Durante desarrollo local se puede usar un repo `type: path`.
 3. Borrar `app/Support/Geocoder.php` local.
 4. Correr `make test` + PHPStan; commit.
 
+### `buscar()` o `buscarEstricto()` (desde 1.17.0)
+
+`Geocoder::buscar()` devuelve `null` tanto si Nominatim no conoce la dirección como si
+no se le pudo preguntar (red caída, error del proveedor, límite local de peticiones).
+Para un formulario da igual; para un **job en cola** no: un corte del proveedor dejaba
+el registro sin ubicar en silencio, sin reintento ni rastro en `failed_jobs`.
+
+```php
+use Muni\Shared\Geocoder;
+use Muni\Shared\GeocoderNoDisponible;
+
+// En un job: null = «no existe», sigue; la excepción se deja subir y la cola reintenta.
+$r = Geocoder::buscarEstricto($direccion); // @throws GeocoderNoDisponible
+```
+
+`buscar()` no cambió de contrato: es `buscarEstricto()` con la excepción capturada.
+Ninguno de los dos cachea fallos; `sugerencias()` tampoco cachea la lista vacía que deja
+un fallo de red (antes la guardaba 12 horas).
+
 ## Siguiente fase (PersonaResolver)
 
 `ApiPersonaResolver`/`PersonaResolverConRespaldo` son byte-idénticos pero usan
