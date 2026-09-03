@@ -22,6 +22,12 @@ jobs:
       - name: Pest
         run: ./vendor/bin/pest
 
+      # Este paquete lo instalan los 11 sistemas municipales: un aviso de
+      # seguridad suyo se reparte por todo el ecosistema. Bloquea a propósito
+      # -sin `|| true`-: un job que informa y no corta lo lee nadie.
+      - name: Auditoría de dependencias (composer audit)
+        run: composer audit --no-dev --format=plain
+
   # La misma suite contra el motor de producción del ecosistema.
   #
   # No es redundante con el job de arriba: la corrida en SQLite estuvo verde
