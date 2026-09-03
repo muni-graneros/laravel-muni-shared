@@ -1,7 +1,9 @@
 <?php
 
 use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Muni\Shared\Geocoder;
 use Muni\Shared\GeocoderNoDisponible;
 
@@ -126,4 +128,82 @@ it('sugerencias sigue devolviendo lista vacía ante una excepción de red', func
     Http::fake(['photon.komoot.io/*' => fn () => throw new ConnectionException('timeout')]);
 
     expect(Geocoder::sugerencias('avenida central'))->toBe([]);
+});
+
+// ── PII en el log: la dirección del vecino no puede terminar en laravel.log ──
+
+/**
+ * Mensaje tal como lo arma Guzzle ante un timeout: con la URI completa, y en la
+ * query va la dirección que se está geocodificando.
+ */
+function timeoutConLaDireccionEnLaUri(string $host, string $direccion): ConnectionException
+{
+    return new ConnectionException(
+        'cURL error 28: Operation timed out after 8000 milliseconds with 0 bytes received '
+        ."for https://{$host}/search?q=".rawurlencode($direccion).'&format=json&limit=1',
+    );
+}
+
+it('un fallo de red con Nominatim se loguea sin la dirección consultada', function () {
+    Http::fake([
+        'nominatim.openstreetmap.org/*' => fn () => throw timeoutConLaDireccionEnLaUri(
+            'nominatim.openstreetmap.org', 'Los Quintos 034, Graneros, Región de O\'Higgins, Chile',
+        ),
+    ]);
+
+    $registros = [];
+    Log::listen(function (MessageLogged $evento) use (&$registros): void {
+        $registros[] = $evento->level.' '.$evento->message.' '.json_encode($evento->context);
+    });
+
+    expect(Geocoder::buscar('Los Quintos 034'))->toBeNull();
+
+    $log = implode("\n", $registros);
+
+    expect($registros)->not->toBe([])
+        // Ni como la escribió el vecino ni como viaja en la URI («Los%20Quintos»).
+        ->and($log)->not->toContain('Quintos')
+        ->and($log)->toContain('ConnectionException');
+});
+
+it('un fallo de red con Photon se loguea sin el texto que escribió el vecino', function () {
+    Http::fake([
+        'photon.komoot.io/*' => fn () => throw timeoutConLaDireccionEnLaUri('photon.komoot.io', 'pasaje los aromos 98'),
+    ]);
+
+    $registros = [];
+    Log::listen(function (MessageLogged $evento) use (&$registros): void {
+        $registros[] = $evento->level.' '.$evento->message.' '.json_encode($evento->context);
+    });
+
+    expect(Geocoder::sugerencias('pasaje los aromos 98'))->toBe([]);
+
+    $log = implode("\n", $registros);
+
+    expect($registros)->not->toBe([])
+        ->and($log)->not->toContain('aromos');
+});
+
+it('GeocoderNoDisponible no arrastra la dirección en su cadena de excepciones', function () {
+    // La excepción está pensada para subir desde un job en cola y que la cola
+    // reintente; cuando el job agota los intentos, Laravel la reporta con su
+    // cadena de `previous` completa, en laravel.log y en GlitchTip. Un
+    // `previous` con la URI de Guzzle es la dirección del vecino en el log.
+    Http::fake([
+        'nominatim.openstreetmap.org/*' => fn () => throw timeoutConLaDireccionEnLaUri(
+            'nominatim.openstreetmap.org', 'Los Quintos 034, Graneros, Región de O\'Higgins, Chile',
+        ),
+    ]);
+
+    try {
+        Geocoder::buscarEstricto('Los Quintos 034');
+        $this->fail('Tenía que lanzar.');
+    } catch (GeocoderNoDisponible $e) {
+        $mensajes = [];
+        for ($actual = $e; $actual !== null; $actual = $actual->getPrevious()) {
+            $mensajes[] = $actual::class.': '.$actual->getMessage();
+        }
+
+        expect(implode("\n", $mensajes))->not->toContain('Quintos');
+    }
 });

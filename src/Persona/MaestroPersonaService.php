@@ -70,7 +70,17 @@ class MaestroPersonaService
 
             return ['data' => (array) $resp->json('data'), 'presencia' => $presencia];
         } catch (\Throwable $e) {
-            Log::info('Maestro de personas no disponible.', ['sistema' => $this->sistemaPropio, 'error' => $e->getMessage()]);
+            // Sin `$e->getMessage()`: Guzzle lo arma con la URI completa, y en
+            // el path va el RUT. Lo que sirve para operar es la clase del fallo,
+            // el status y el número de error de cURL; eso es lo que se escribe.
+            $fallo = MaestroNoDisponible::porExcepcion($e);
+
+            Log::info('Maestro de personas no disponible.', [
+                'sistema' => $this->sistemaPropio,
+                'error' => $fallo->causa,
+                'status' => $fallo->status,
+                'curl_errno' => $fallo->curlErrno,
+            ]);
 
             return null;
         }

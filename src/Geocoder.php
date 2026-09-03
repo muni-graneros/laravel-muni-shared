@@ -181,7 +181,9 @@ final class Geocoder
                     'lon' => self::GRANEROS_LON,
                 ]);
         } catch (\Throwable $e) {
-            Log::warning('Geocoder: fallo de red al consultar Photon.', ['error' => $e->getMessage()]);
+            // La clase del fallo y no su mensaje: Guzzle lo arma con la URI, y
+            // en la query va lo que el vecino está escribiendo.
+            Log::warning('Geocoder: fallo de red al consultar Photon.', ['error' => $e::class]);
 
             return null;
         }
@@ -298,9 +300,13 @@ final class Geocoder
                     'countrycodes' => 'cl',
                 ]);
         } catch (\Throwable $e) {
-            Log::warning('Geocoder: fallo de red al consultar Nominatim.', ['error' => $e->getMessage()]);
+            // Ni `$e->getMessage()` en el log ni `$e` como `previous`: las dos
+            // cosas llevan la URI de Guzzle con la dirección del vecino en la
+            // query. La excepción sube desde jobs en cola y, cuando el job
+            // agota los reintentos, Laravel la reporta con su cadena completa.
+            Log::warning('Geocoder: fallo de red al consultar Nominatim.', ['error' => $e::class]);
 
-            throw new GeocoderNoDisponible('Fallo de red al consultar Nominatim.', 0, $e);
+            throw new GeocoderNoDisponible('Fallo de red al consultar Nominatim ('.class_basename($e).').');
         }
 
         if (! $respuesta->ok()) {
