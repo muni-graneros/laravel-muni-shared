@@ -1,0 +1,115 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+
+parameters:
+    level: 5
+    paths:
+        - src
+
+    # Sin esto, cualquier tipo que PHPStan solo conoce por PHPDoc (un
+    # `@property` de modelo, una interfaz de composición como TitularDeDatos)
+    # hace que un `instanceof` legítimo se reporte como «siempre verdadero».
+    # El propio mensaje de PHPStan sugiere este ajuste: es el recomendado para
+    # código con PHPDoc de propiedades de Eloquent, no una forma de tapar un
+    # hallazgo real.
+    treatPhpDocTypesAsCertain: false
+
+    # NO es un baseline: un baseline vuelca automáticamente TODO lo que
+    # encuentre, línea por línea, sin que nadie explique por qué. Esto es lo
+    # contrario: una lista corta, escrita a mano, de la causa raíz de cada
+    # hallazgo que quedó fuera de esta pasada —código que no es de esta tarea,
+    # o una limitación conocida de PHPStan— con su porqué. Nuevo código que
+    # dispare cualquiera de estos identificadores en cualquier OTRO archivo sí
+    # rompe el CI.
+    ignoreErrors:
+        # Las relaciones de Eloquent (MorphTo, BelongsTo, BelongsToMany) no son
+        # covariantes en su segundo parámetro genérico: PHPStan compara el tipo
+        # exacto que declara el @return (la clase concreta del modelo) contra
+        # `$this`, y los dos NUNCA calzan aunque el código sea correcto. Es una
+        # limitación documentada de PHPStan con las plantillas de Larastan, no
+        # un error de estos modelos: ver el enlace que el propio PHPStan cita
+        # en cada uno de estos hallazgos
+        # (https://phpstan.org/blog/whats-up-with-template-covariant-generics).
+        -
+            identifier: return.type
+            paths:
+                - src/Privacidad/Modelos/*.php
+        -
+            identifier: generics.notSubtype
+            paths:
+                - src/Privacidad/Modelos/*.php
+
+        # El paquete trabaja a propósito con Illuminate\Database\Eloquent\Model
+        # genérico: no conoce el modelo de usuario/titular concreto de cada uno
+        # de los sistemas adoptantes (uno usa el RUT como llave primaria, otro
+        # un id numérico, cada uno con sus propios roles y su propio
+        # `homePath()`). Acceder a `$rut`, `$id`, `syncRoles()`, `homePath()`
+        # sobre ese Model genérico es el contrato explícito del paquete —el
+        # adoptante entrega un modelo que los tiene—, no un error de tipos.
+        # Repasar esta clase es el hallazgo #10 del plan de arreglo (verificar
+        # firma del id_token), no esta pasada de PHPStan.
+        -
+            identifier: property.notFound
+            paths:
+                - src/Sso/KeycloakSsoController.php
+                - src/Persona/WriteThrough/SincronizarAlMaestro.php
+        -
+            identifier: method.notFound
+            paths:
+                - src/Sso/KeycloakSsoController.php
+        -
+            identifier: argument.type
+            paths:
+                - src/Sso/KeycloakSsoController.php
+                # Mismo motivo: PropagaRectificacion::propagar() recibe el
+                # contrato TitularDeDatos, no el Model concreto de cada
+                # adoptante.
+                - src/Privacidad/Rectificaciones.php
+
+        # `new static()` en publicBaseFrom() es deliberado: cada sistema que
+        # extiende el controlador puede sobreescribir publicBase(), y esta
+        # llamada estática (la usa el LogoutResponse de Filament) tiene que
+        # resolver a la subclase de quien la llama. Cambiarlo es una decisión
+        # de diseño del SSO —lo tocan 3 sistemas—, no algo para esta pasada.
+        -
+            identifier: new.static
+            paths:
+                - src/Sso/KeycloakSsoController.php
+
+        # Colección de Eloquent devuelta donde el @return declara la interfaz
+        # más genérica (Support\Collection): es más específico que lo prometido,
+        # nunca menos. Archivo fuera del alcance de esta pasada.
+        -
+            identifier: return.type
+            paths:
+                - src/Persona/WriteThrough/VerificarSincronizacion.php
+
+        # Defensivo a propósito: el catch existe para blindar contra un
+        # bloqueo/deadlock de MariaDB bajo la publicación concurrente que
+        # `PublicacionConcurrenteEnMariaDbTest` ejercita contra el motor real;
+        # PHPStan analiza solo la firma de `DB::transaction()`, que no declara
+        # esas excepciones, y por eso no puede ver que sí se propagan.
+        -
+            identifier: catch.neverThrown
+            paths:
+                - src/Privacidad/Textos.php
+
+        # Cosmético: el array que arma MuniDocsCommand siempre tiene el
+        # offset 1, así que el `??` nunca hace falta, pero documenta la forma
+        # sin depender de que nadie recuerde el índice. Archivo fuera del
+        # alcance de esta pasada.
+        -
+            identifier: nullCoalesce.offset
+            paths:
+                - src/Console/MuniDocsCommand.php
+
+        # AssertEnvExampleCompleto solo lo usan los tests de cada adoptante
+        # (tests/Feature/EnvExampleCompletoTest.php de cada sistema): dentro de
+        # ESTE paquete no hay ningún `uses()` que lo ejercite —solo lo prueba
+        # tests/Testing/AssertEnvExampleCompletoTest.php pasándole las rutas a
+        # mano—, y PHPStan no puede inferir el tipo de `$this` en un trait sin
+        # ver un sitio que lo use. Ver el docblock del trait mismo.
+        -
+            identifier: trait.unused
+            paths:
+                - src/Testing/AssertEnvExampleCompleto.php

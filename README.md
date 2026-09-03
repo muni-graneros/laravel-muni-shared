@@ -17,6 +17,7 @@ bug N veces. Ver Frente 22 del ROADMAP de `plataforma-graneros`.
 | `Persona\PersonaDTO` | `Muni\Shared\Persona\PersonaDTO` | ✅ extraída (DTO neutro; `fromModel` vive en el resolver local de cada repo) |
 | `Persona\PersonaResolverInterface` | `Muni\Shared\Persona\PersonaResolverInterface` | ✅ extraída (contrato sagrado, idéntico en todos) |
 | `Persona\ApiPersonaResolver` | `Muni\Shared\Persona\ApiPersonaResolver` | ✅ extraída (cliente HTTP del maestro) |
+| `Testing\ContratoDeEnvExample` / `AssertEnvExampleCompleto` | `Muni\Shared\Testing\*` | ✅ extraída (compara `config/` contra `.env.example`, ver más abajo) |
 | `LocalPersonaResolver` / `PersonaResolverConRespaldo` | — | quedan LOCALES: dependen del modelo `Persona` y sus relaciones de dominio (disc `discapacidades()`, feria `puestos()`). Implementan la interfaz compartida. |
 
 ## Instalación (repositorio privado por VCS)
@@ -101,6 +102,36 @@ revisiones de código.
 Lo mismo corre en CI (job `Pest sobre MariaDB`). Correrlo local sigue siendo el
 paso obligatorio antes de etiquetar: **si la CI del repo está caída por
 facturación, este comando es la única corrida que existe.**
+
+## `.env.example` completo (`Testing\ContratoDeEnvExample`)
+
+Cada sistema arrastraba un `.env.example` desalineado de `config/`: la auditoría
+del ecosistema (2026-08-30) contó 134 claves fuera en licencias, 130 en
+discapacidad, 125 en feria. Laravel ignora en silencio la variable de un
+`env()` cuyo archivo de config no la declara —no hay error, corre con el valor
+de fábrica— así que nadie se entera hasta que falla en producción algo que en
+local nunca se probó.
+
+`Muni\Shared\Testing\ContratoDeEnvExample` compara, con el tokenizador de PHP
+(no una regex: ver su docblock), las claves que `config/*.php` lee de verdad
+con `env(...)` contra las que `.env.example` declara —comentadas o no—. Cada
+adoptante suma un test de tres líneas:
+
+```php
+// tests/Feature/EnvExampleCompletoTest.php
+use Muni\Shared\Testing\AssertEnvExampleCompleto;
+
+uses(AssertEnvExampleCompleto::class);
+
+it('.env.example documenta todo lo que config/ lee', function () {
+    $this->assertEnvExampleCompleto(); // usa config_path() y base_path('.env.example')
+});
+```
+
+Sin argumentos toma las rutas reales del sistema que corre el test. El mensaje
+de fallo lista las claves faltantes, así que arreglarlo es copiar la línea que
+falta —comentada si es una bandera opcional, como ya hacen `CSP_ENABLED` u
+`OCR_ENABLED`—.
 
 ## Módulo Privacidad (Ley 21.719)
 
