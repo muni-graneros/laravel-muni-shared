@@ -180,7 +180,11 @@ class Bloqueos
                 ->vigentes()
                 ->update([
                     'levantado_en' => now(),
-                    'levantado_motivo' => $motivo,
+                    // Un update() sobre el builder no pasa por los casts del
+                    // modelo: se cifra a mano, con el mismo cast que lee la
+                    // columna. Sin esto el motivo quedaba en claro con el cast
+                    // declarado y la suite en verde.
+                    'levantado_motivo' => CifradoCast::cifrar($motivo),
                     'user_levanta_id' => Auth::id(),
                 ]);
 
@@ -271,7 +275,9 @@ class Bloqueos
             $afectados = Bloqueo::query()
                 ->where('solicitud_id', $solicitud->getKey())
                 ->vigentes()
-                ->update(['motivo' => $motivo]);
+                // Cifrado a mano por lo mismo que en levantar(): el update()
+                // masivo no pasa por los casts.
+                ->update(['motivo' => CifradoCast::cifrar($motivo)]);
 
             $titular = $solicitud->titular;
 

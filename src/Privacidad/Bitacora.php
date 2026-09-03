@@ -2,6 +2,7 @@
 
 namespace Muni\Shared\Privacidad;
 
+use Illuminate\Contracts\Encryption\DecryptException;
 use Illuminate\Contracts\Filesystem\Filesystem;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Query\Builder;
@@ -11,6 +12,11 @@ use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use InvalidArgumentException;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
+use Muni\Shared\Privacidad\Modelos\Bloqueo;
+use Muni\Shared\Privacidad\Modelos\Consentimiento;
+use Muni\Shared\Privacidad\Modelos\EntradaBitacora;
+use Muni\Shared\Privacidad\Modelos\InformacionEntregada;
+use Muni\Shared\Privacidad\Modelos\Solicitud;
 
 /**
  * Corta el vínculo entre TODO el módulo y un titular que se anonimizó.
@@ -190,6 +196,29 @@ class Bitacora
         'privacidad_consentimientos' => ['evidencia_path', 'acreditacion_path'],
     ];
 
+    /**
+     * El modelo de cada tabla barrida.
+     *
+     * El barrido escribe por query builder (ver desvincular()), y el builder no
+     * pasa por los casts del modelo: con el texto libre cifrado en reposo, un
+     * `update(['detalle' => SUPRIMIDO])` a secas dejaba el centinela en claro
+     * en una columna que el modelo espera cifrada. Acá el modelo se usa como
+     * lo que sabe de sus columnas —qué va cifrado, cómo se serializa un
+     * JSON— sin guardar nada por él: `comoSeGuarda()` le pide los valores
+     * crudos y el UPDATE sigue siendo por builder.
+     *
+     * Mismas claves que TABLAS, y una guardia lo exige.
+     *
+     * @var array<string, class-string<Model>>
+     */
+    private const MODELOS = [
+        'privacidad_bitacora' => EntradaBitacora::class,
+        'privacidad_solicitudes' => Solicitud::class,
+        'privacidad_consentimientos' => Consentimiento::class,
+        'privacidad_informaciones' => InformacionEntregada::class,
+        'privacidad_bloqueos' => Bloqueo::class,
+    ];
+
     public function __construct(private readonly RegistroDeEvidencia $evidencia) {}
 
     /**
@@ -268,7 +297,9 @@ class Bitacora
                     ARRAY_FILTER_USE_KEY,
                 );
 
-                $aSuprimir = array_diff_key($aSuprimir, $rutasJson);
+                // Y lo que sí viaja al UPDATE va como lo guardaría el modelo:
+                // el centinela cifrado donde la columna es cifrada.
+                $aSuprimir = $this->comoSeGuarda($tabla, array_diff_key($aSuprimir, $rutasJson));
 
                 $this->purgarRutasJson($tabla, $delTitular, $rutasJson);
 
@@ -428,7 +459,7 @@ class Bitacora
 
         foreach ($porColumna as $columna => $claves) {
             foreach ($filas()->select('id', $columna)->get() as $fila) {
-                $documento = json_decode((string) $fila->{$columna}, true);
+                $documento = $this->comoSeLee($tabla, $columna, $fila->{$columna});
                 $documento = is_array($documento) ? $documento : [];
 
                 foreach ($claves as $clave => $valor) {
@@ -439,8 +470,50 @@ class Bitacora
 
                 DB::table($tabla)
                     ->where('id', $fila->id)
-                    ->update([$columna => json_encode($documento)]);
+                    ->update($this->comoSeGuarda($tabla, [$columna => $documento]));
             }
+        }
+    }
+
+    /**
+     * Los valores tal como los escribiría el modelo de la tabla: cifrados donde
+     * la columna es cifrada, serializados donde es JSON, crudos en el resto.
+     *
+     * Se usa el modelo como máquina de casts y nada más —`forceFill()` sobre
+     * una instancia que nunca se guarda—: el UPDATE sigue siendo por builder,
+     * que es donde vive la razón de serlo (la bitácora rechaza `updating`).
+     *
+     * @param  array<string, mixed>  $valores
+     * @return array<string, mixed>
+     */
+    private function comoSeGuarda(string $tabla, array $valores): array
+    {
+        if ($valores === []) {
+            return [];
+        }
+
+        $modelo = self::MODELOS[$tabla];
+
+        return (new $modelo)->forceFill($valores)->getAttributes();
+    }
+
+    /**
+     * El valor de una columna tal como lo leería el modelo: descifrado y
+     * decodificado.
+     *
+     * Un cifrado que no valida —otra APP_KEY, fila manipulada— se trata como
+     * documento ilegible y no como error: el criterio del barrido es que un
+     * contenido que nadie pudo inspeccionar se reescribe purgado en vez de
+     * conservarse (ver purgarRutasJson). Equivocarse hacia suprimir.
+     */
+    private function comoSeLee(string $tabla, string $columna, mixed $crudo): mixed
+    {
+        $modelo = self::MODELOS[$tabla];
+
+        try {
+            return (new $modelo)->setRawAttributes([$columna => $crudo])->getAttribute($columna);
+        } catch (DecryptException) {
+            return null;
         }
     }
 

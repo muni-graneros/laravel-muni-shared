@@ -163,6 +163,56 @@ en SQLite un `change()` reconstruye la tabla y **se lleva los triggers**, o sea
 que dejaría la evidencia legal sin protección en silencio. MariaDB no tiene ese
 problema.
 
+### Texto libre cifrado en reposo (desde v1.18.0)
+
+Las columnas de prosa del módulo van **cifradas con la APP_KEY del sistema**
+(`CifradoCast`, el `encrypted` de Laravel con tolerancia a las filas viejas):
+
+| Tabla | Columnas |
+|---|---|
+| `privacidad_solicitudes` | `detalle`, `fundamento_resolucion`, `verificacion_identidad` |
+| `privacidad_bloqueos` | `motivo`, `levantado_motivo` |
+
+Son lo que dicta el ciudadano («mi RUT es…, vivo en…», en discapacidad un
+diagnóstico), el RUN con que acreditó su identidad, la respuesta escrita y los
+motivos que dicta un funcionario nombrando a la persona o a un familiar. Las
+tablas las comparten los ocho sistemas y estaban en claro.
+
+Qué cambia para un adoptante:
+
+- **La APP_KEY pasa a ser parte de la evidencia.** Rotarla sin recifrar deja
+  ilegible el expediente ARCOP: `Solicitud->detalle` lanza `DecryptException`.
+  Respaldar la clave junto con la base (Vaultwarden), y si hay que rotarla,
+  hacerlo con `APP_PREVIOUS_KEYS` de Laravel, que el cast respeta.
+- **Las filas escritas antes de esta versión se siguen leyendo en claro**, sin
+  fallar: el cast reconoce un valor cifrado por la forma de su payload y lo
+  que no la tiene lo devuelve tal cual. Un payload cifrado que no valida su
+  MAC (otra clave, fila manipulada) sí truena, como debe. Para cifrar lo que
+  ya está escrito:
+
+  ```bash
+  php artisan privacidad:cifrar-texto-libre            # simulación: cuántas filas
+  php artisan privacidad:cifrar-texto-libre --ejecutar
+  ```
+
+  Es idempotente: lo ya cifrado no se toca. Correrlo una vez después de
+  migrar; no está agendado ni es automático a propósito, porque reescribe
+  filas con la clave del sistema.
+- **La migración cambia `verificacion_identidad` de JSON a LONGTEXT.** MariaDB
+  ≥ 10.4.3 le agrega solo `CHECK (json_valid())` a las columnas JSON, y un
+  valor cifrado no es JSON: la primera escritura fallaría en producción con la
+  suite en verde (SQLite no tipa). La migración comprueba que la restricción no
+  haya sobrevivido y falla con un mensaje claro si sobrevivió.
+- **Los `update()` masivos no pasan por los casts.** `Bloqueo::query()
+  ->update(['motivo' => …])` escribe en claro con el cast declarado y sin que
+  nada avise. Dentro del paquete se cifra con `CifradoCast::cifrar()`; un
+  adoptante que escriba esas columnas por builder tiene que hacer lo mismo, y
+  el que las lea por `DB::table()` tiene que descifrar con
+  `CifradoCast::descifrar()`. Buscar con `LIKE` sobre esas columnas ya no
+  funciona: es el precio del cifrado.
+- **Tope útil:** las columnas TEXT admiten 65.535 bytes y el cifrado agrega
+  ~40 % más ~200 bytes, así que el texto más largo que cabe ronda los 46 KB.
+
 ### Instalar en un sistema
 
 ```bash
@@ -778,6 +828,8 @@ php artisan privacidad:rat                        # el RAT en tabla
 php artisan privacidad:rat --json                 # el RAT para adjuntar
 php artisan privacidad:aplicar-retencion          # simulación
 php artisan privacidad:aplicar-retencion --ejecutar
+php artisan privacidad:cifrar-texto-libre         # simulación
+php artisan privacidad:cifrar-texto-libre --ejecutar
 ```
 
 `--ejecutar` toma un candado (`Cache::lock`) y falla con código distinto de cero

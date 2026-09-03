@@ -2,6 +2,7 @@
 
 namespace Muni\Shared\Tests;
 
+use Illuminate\Encryption\Encrypter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Muni\Shared\MuniSharedServiceProvider;
 use Orchestra\Testbench\TestCase as Base;
@@ -49,6 +50,12 @@ abstract class TestCase extends Base
 
     protected function defineEnvironment($app): void
     {
+        // El módulo de privacidad cifra el texto libre con la APP_KEY del
+        // sistema, y el esqueleto de Testbench no trae ninguna. Una clave por
+        // proceso alcanza: la base es en memoria y muere con él.
+        $app['config']->set('app.key', 'base64:'.base64_encode(Encrypter::generateKey('AES-256-CBC')));
+        $app['config']->set('app.cipher', 'AES-256-CBC');
+
         $app['config']->set('database.default', 'testing');
         $app['config']->set('database.connections.testing', self::hayMariaDb()
             ? [

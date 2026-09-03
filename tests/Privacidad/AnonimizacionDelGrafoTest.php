@@ -8,6 +8,7 @@ use Illuminate\Support\Str;
 use Muni\Shared\Privacidad\AplicarRetencion;
 use Muni\Shared\Privacidad\BaseLicitud;
 use Muni\Shared\Privacidad\Bitacora;
+use Muni\Shared\Privacidad\CifradoCast;
 use Muni\Shared\Privacidad\Consentimientos;
 use Muni\Shared\Privacidad\Contratos\PropagaSupresion;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
@@ -621,7 +622,9 @@ it('el hecho auditable sobrevive a la purga', function () {
     $rectificacion = DB::table('privacidad_solicitudes')
         ->whereNull('titular_id')->where('tipo', TipoDeSolicitud::Rectificacion->value)->sole();
 
-    $verificacion = json_decode((string) $rectificacion->verificacion_identidad, true);
+    // El texto libre va cifrado en reposo: se descifra la fila cruda para
+    // seguir afirmando lo que quedó escrito, no lo que devuelve el modelo.
+    $verificacion = json_decode((string) CifradoCast::descifrar($rectificacion->verificacion_identidad), true);
 
     expect($rectificacion->estado)->toBe('acogida')
         ->and($rectificacion->recibida_en)->not->toBeNull()
@@ -629,7 +632,7 @@ it('el hecho auditable sobrevive a la purga', function () {
         ->and($rectificacion->resuelta_en)->not->toBeNull()
         ->and($rectificacion->titular_ref)->not->toBeNull()
         // El texto libre se fue, pero deja marca de que hubo algo.
-        ->and($rectificacion->detalle)->toBe(Bitacora::SUPRIMIDO)
+        ->and(CifradoCast::descifrar($rectificacion->detalle))->toBe(Bitacora::SUPRIMIDO)
         ->and($rectificacion->fundamento_resolucion)->toBeNull()
         // Cómo se verificó la identidad es hecho auditable; el RUN que iba
         // adentro, no.
@@ -654,7 +657,7 @@ it('la historia de la persona vigente no se toca', function () {
         ->and($intactas->get('privacidad_bitacora'))->toBeGreaterThan(5)
         ->and($this->vigente->refresh()->documento)->toBe('22.222.222-2')
         // Y su texto libre sigue completo: la purga es del titular anonimizado,
-        // no del que sigue vigente.
-        ->and($suya->detalle)->toContain('22.222.222-2')
-        ->and($suya->verificacion_identidad)->toContain('22.222.222-2');
+        // no del que sigue vigente. (Cifrado en la fila, de ahí el descifrar.)
+        ->and((string) CifradoCast::descifrar($suya->detalle))->toContain('22.222.222-2')
+        ->and((string) CifradoCast::descifrar($suya->verificacion_identidad))->toContain('22.222.222-2');
 });

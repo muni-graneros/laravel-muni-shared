@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Carbon;
+use Muni\Shared\Privacidad\CifradoCast;
 
 /**
  * @property string $sistema
@@ -17,12 +18,14 @@ use Illuminate\Support\Carbon;
  * @property string|null $titular_ref
  * @property int|null $finalidad_id null = todas las finalidades
  * @property int|null $solicitud_id
- * @property string $motivo
+ * @property string $motivo prosa dictada por el funcionario; cifrada en la
+ *                          base (ver CifradoCast)
  * @property Carbon $desde
  * @property Carbon|null $levantado_en
  * @property string|null $levantado_motivo por qué se reanudó, que no es lo
  *                                         mismo que `motivo` (por qué se
- *                                         suspendió) y por eso no lo pisa
+ *                                         suspendió) y por eso no lo pisa;
+ *                                         cifrada en la base
  * @property int|null $user_id quién bloqueó
  * @property int|null $user_levanta_id quién levantó
  */
@@ -35,6 +38,13 @@ class Bloqueo extends Model
     protected $casts = [
         'desde' => 'datetime',
         'levantado_en' => 'datetime',
+        // Los dos motivos los dicta un funcionario y nombran al titular o a un
+        // tercero («la hija llamó a reclamar por el apellido»). Cifrados en
+        // reposo. `Bloqueos::levantar()` y `volverDefinitivos()` los escriben
+        // por `update()` masivo, que no pasa por acá: cifran a mano con el
+        // mismo cast.
+        'motivo' => CifradoCast::class,
+        'levantado_motivo' => CifradoCast::class,
     ];
 
     /** @return MorphTo<Model, Bloqueo> */
