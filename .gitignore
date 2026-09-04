@@ -7,3 +7,7 @@ composer.lock
 # direnv (tokens por frente; NUNCA versionar)
 .envrc
 .direnv/
+
+# Estado local del harness de Claude Code: archivos de 0 bytes que crea la
+# herramienta. Este paquete no versiona nada bajo `.claude/`, así que va entera.
+/.claude/
