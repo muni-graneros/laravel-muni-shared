@@ -9,7 +9,28 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
-_Nada todavía._
+### Añadido
+- `Seguridad\CredencialesDePlantilla`: aborta el arranque en producción si la contraseña
+  de la base de datos o la de cifrado de los respaldos siguen siendo las del
+  `.env.example` público del scaffold. Portada desde
+  `App\Support\CredencialesDePlantilla` de `scaffold-laravel-filament-pwa`, donde era
+  la única protección — los ocho sistemas generados a partir de él no tenían la clase.
+  Se engancha sola en `MuniSharedServiceProvider::boot()`: instalar el paquete alcanza,
+  sin agregar ninguna línea al `AppServiceProvider` del sistema. La lista de valores
+  vigilados es configurable (`config/credenciales-de-plantilla.php`, tag
+  `credenciales-de-plantilla-config`), con los del scaffold como valor por omisión.
+
+### Qué se rompe al subir
+- **Un sistema que hoy esté en producción con `DB_PASSWORD=sistema_pass` o con la
+  contraseña de respaldos del ejemplo dejará de arrancar** al actualizar a esta
+  versión. Es a propósito: hoy arranca, y esa es exactamente la puerta abierta que
+  la guarda cierra. Antes de desplegar esta versión conviene comprobar en cada
+  servidor que esos dos valores ya no son los del ejemplo; si alguno lo es, el
+  arreglo es cambiarlo, no saltarse la guarda. El mensaje del error dice qué
+  variable cambiar y nunca imprime el valor configurado.
+- No afecta a desarrollo (solo actúa con `APP_ENV=production`) ni al build de la
+  imagen (no lanza mientras no haya `APP_KEY`, que es como arranca
+  `package:discover` durante `composer install`).
 
 ## [1.18.0] - 2026-09-03
 

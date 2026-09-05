@@ -18,6 +18,7 @@ bug N veces. Ver Frente 22 del ROADMAP de `plataforma-graneros`.
 | `Persona\PersonaResolverInterface` | `Muni\Shared\Persona\PersonaResolverInterface` | ✅ extraída (contrato sagrado, idéntico en todos) |
 | `Persona\ApiPersonaResolver` | `Muni\Shared\Persona\ApiPersonaResolver` | ✅ extraída (cliente HTTP del maestro) |
 | `Testing\ContratoDeEnvExample` / `AssertEnvExampleCompleto` | `Muni\Shared\Testing\*` | ✅ extraída (compara `config/` contra `.env.example`, ver más abajo) |
+| `Seguridad\CredencialesDePlantilla` | `Muni\Shared\Seguridad\CredencialesDePlantilla` | ✅ extraída (aborta el arranque en producción si queda una contraseña del `.env.example`, ver más abajo) |
 | `LocalPersonaResolver` / `PersonaResolverConRespaldo` | — | quedan LOCALES: dependen del modelo `Persona` y sus relaciones de dominio (disc `discapacidades()`, feria `puestos()`). Implementan la interfaz compartida. |
 
 ## Instalación (repositorio privado por VCS)
@@ -132,6 +133,84 @@ Sin argumentos toma las rutas reales del sistema que corre el test. El mensaje
 de fallo lista las claves faltantes, así que arreglarlo es copiar la línea que
 falta —comentada si es una bandera opcional, como ya hacen `CSP_ENABLED` u
 `OCR_ENABLED`—.
+
+## Guarda de credenciales de plantilla (`Seguridad\CredencialesDePlantilla`)
+
+Portada desde `App\Support\CredencialesDePlantilla` de `scaffold-laravel-filament-pwa`,
+donde hasta el 2026-09-05 era la ÚNICA protección del ecosistema: los ocho sistemas
+generados a partir del scaffold no tenían la clase, y su `.env.example` seguía trayendo
+la misma contraseña de base de datos (`sistema_pass`) y la misma contraseña de cifrado de
+respaldos (`cambiame-por-algo-seguro-en-produccion`) — las dos publicadas en un repositorio
+que cualquiera puede leer. Un sistema desplegado sin cambiarlas arrancaba igual, en
+silencio.
+
+### Adopción: cero pasos, a propósito
+
+```bash
+composer require muni-graneros/laravel-muni-shared
+```
+
+Y nada más. `MuniSharedServiceProvider::boot()` llama a `CredencialesDePlantilla::comprobar()`
+sola, lo primero de todo, en cuanto el paquete está instalado — **no** hace falta agregar
+una línea al `AppServiceProvider` del sistema.
+
+Es una decisión deliberada y no la más simple de implementar: la alternativa —una línea que
+cada sistema pega a mano en su `AppServiceProvider`, como hace hoy el propio scaffold— es
+exactamente el paso que esta migración encontró saltado en los ocho sistemas. Este mismo
+proveedor ya tiene un precedente idéntico y ya midió el costo de la otra opción:
+`agendarRetencion()` (ver su docblock) se agenda sola porque documentarlo en el README no
+funcionó — «es el paso que nadie escribe» — y un sistema quedó instalado, migrado, sembrado
+y con los contratos enlazados sin que la retención corriera nunca. Delegar el enganche de
+esta guarda a que cada sistema recuerde escribir una línea reproduce el mismo defecto con
+consecuencia peor: una salvaguarda de seguridad, no una tarea administrativa.
+
+El costo del cableado automático es que corre siempre, en los ocho sistemas, sin que nadie
+lo pida explícitamente — por eso las dos salvaguardas que seguir leyendo abajo (solo
+producción, solo con `app.key`) no son opcionales.
+
+### Qué hace, y qué no
+
+- **Solo actúa en producción** (`app()->environment('production')`). En cualquier otro
+  entorno no hace nada, ni siquiera si encuentra un valor de plantilla: todos los entornos
+  de desarrollo y de pruebas del ecosistema arrancan con `sistema_pass`.
+- **No lanza durante `composer install` / `package:discover`.** Ahí Laravel arranca sin
+  `.env` —y por lo tanto asume `APP_ENV=production`, su valor por defecto— para descubrir
+  los paquetes; sin `app.key` no hay instalación real que proteger, y lanzar ahí tumbaría el
+  propio `composer install`, en el CI y en el build de la imagen, con un error que habla de
+  la base de datos y despista. Es la misma salvaguarda de `App\Support\CredencialesDePlantilla`
+  del scaffold, copiada tal cual.
+- **El mensaje dice qué variable del `.env` cambiar** (`DB_PASSWORD`, `BACKUP_ARCHIVE_PASSWORD`,
+  o la que declare un sistema con valores propios) **y nunca el valor real configurado**: solo
+  menciona el valor de plantilla, que ya es público porque está en el repositorio del
+  scaffold. Un secreto real de producción no aparece nunca en un mensaje de excepción, que
+  puede terminar en un log o en un panel de errores.
+
+### Valores propios de cada sistema
+
+Por omisión vigila los dos valores del scaffold (`CredencialesDePlantilla::POR_OMISION`). Un
+sistema con sus propias credenciales de plantilla —o con más de dos— publica el config y
+extiende esa lista, para no perder la vigilancia sobre las del scaffold al sumar la suya:
+
+```bash
+php artisan vendor:publish --tag=credenciales-de-plantilla-config
+```
+
+```php
+// config/credenciales-de-plantilla.php
+use Muni\Shared\Seguridad\CredencialesDePlantilla;
+
+return [
+    'valores' => [
+        ...CredencialesDePlantilla::POR_OMISION,
+        [
+            'queEs' => 'contraseña del panel de reportes',
+            'config' => 'reportes.password',
+            'valorDePlantilla' => 'reportes_demo',
+            'variableEnv' => 'REPORTES_PASSWORD',
+        ],
+    ],
+];
+```
 
 ## Módulo Privacidad (Ley 21.719)
 

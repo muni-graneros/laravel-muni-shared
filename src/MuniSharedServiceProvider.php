@@ -17,6 +17,7 @@ use Muni\Shared\Privacidad\Console\ExportarRatCommand;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\Contratos\ResuelveTitularesVencidos;
 use Muni\Shared\Privacidad\NingunTitularVencido;
+use Muni\Shared\Seguridad\CredencialesDePlantilla;
 
 /**
  * Service provider del paquete compartido del ecosistema municipal.
@@ -36,6 +37,7 @@ class MuniSharedServiceProvider extends ServiceProvider
         // de que alguien resuelva el mailer.
         $this->mergeConfigFrom(__DIR__.'/../config/correo-graph.php', 'mail.mailers.graph');
         $this->mergeConfigFrom(__DIR__.'/../config/privacidad.php', 'privacidad');
+        $this->mergeConfigFrom(__DIR__.'/../config/credenciales-de-plantilla.php', 'credenciales-de-plantilla');
 
         // Enlace por defecto: un sistema que ya tenga su propia trazabilidad
         // puede sustituirlo sin tocar el módulo.
@@ -52,6 +54,15 @@ class MuniSharedServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
+        // Va lo primero, antes de cualquier otra cosa del arranque: si las
+        // credenciales de plantilla llegaron a producción, no seguimos. Se
+        // llama sola —el sistema no escribe ni una línea— por la misma razón
+        // que `agendarRetencion()` más abajo se agenda sola y no desde un paso
+        // documentado en el README: «es el paso que nadie escribe». La clase
+        // vivía SOLO en el scaffold hasta esta versión, y ningún otro sistema
+        // del ecosistema la tenía. Ver el docblock de la clase.
+        CredencialesDePlantilla::comprobar();
+
         // Las migraciones se cargan y no se publican: así, actualizar el paquete
         // propaga el esquema a los 8 sistemas con un `migrate`, sin un paso de
         // publicación por repo que alguien va a olvidar.
@@ -61,6 +72,10 @@ class MuniSharedServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__.'/../config/privacidad.php' => config_path('privacidad.php'),
             ], 'privacidad-config');
+
+            $this->publishes([
+                __DIR__.'/../config/credenciales-de-plantilla.php' => config_path('credenciales-de-plantilla.php'),
+            ], 'credenciales-de-plantilla-config');
 
             $this->publishes([
                 __DIR__.'/../stubs/privacidad' => base_path('docs/privacidad'),
