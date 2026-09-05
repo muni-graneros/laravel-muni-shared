@@ -9,6 +9,10 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+_Nada todavía._
+
+## [1.18.0] - 2026-09-03
+
 ### Añadido
 - `AssertEnvExampleCompleto` y `ContratoDeEnvExample`: el paquete trae su propio
   candado para que un `.env.example` no se desalinee de lo que `config()` lee.
