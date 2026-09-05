@@ -9,6 +9,10 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+_Nada todavía._
+
+## [1.19.0] - 2026-09-05
+
 ### Añadido
 - `Seguridad\CredencialesDePlantilla`: aborta el arranque en producción si la contraseña
   de la base de datos o la de cifrado de los respaldos siguen siendo las del
