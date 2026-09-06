@@ -19,6 +19,13 @@ bug N veces. Ver Frente 22 del ROADMAP de `plataforma-graneros`.
 | `Persona\ApiPersonaResolver` | `Muni\Shared\Persona\ApiPersonaResolver` | ✅ extraída (cliente HTTP del maestro) |
 | `Testing\ContratoDeEnvExample` / `AssertEnvExampleCompleto` | `Muni\Shared\Testing\*` | ✅ extraída (compara `config/` contra `.env.example`, ver más abajo) |
 | `Seguridad\CredencialesDePlantilla` | `Muni\Shared\Seguridad\CredencialesDePlantilla` | ✅ extraída (aborta el arranque en producción si queda una contraseña del `.env.example`, ver más abajo) |
+| `Auditoria\RolePolicy` / `ActivityPolicy` / `Pages\ListActivitiesBase` | `Muni\Shared\Auditoria\*` | ✅ extraída (políticas y listado del panel; requiere Filament + spatie, que son `suggest`) |
+| `Casts\EncryptedSeguro` | `Muni\Shared\Casts\EncryptedSeguro` | ✅ extraída (cifrado en reposo que tolera filas heredadas en claro) |
+| `Errores\ReporteDeErrores` | `Muni\Shared\Errores\ReporteDeErrores` | ✅ extraída (las trazas no salen del país, Ley 21.719) |
+| `Assets` + `asset_versionado()` | `Muni\Shared\Assets` | ✅ extraída (URL de asset versionada por `mtime`; la función global sigue disponible) |
+| `Console\LimpiarDatosOperativosCommand` | `Muni\Shared\Console\*` | ✅ extraída (comando `env:clean-data`, con la lista de tablas en configuración) |
+| `Seguridad\PermisosBajoOctane` / `Testing\AssertPermisosNoSeQuedanPegados` | `Muni\Shared\*` | ✅ extraída (candado del único valor municipal de `config/permission.php`) |
+| `Seguridad\SegundoFactorEnProduccion` / `Testing\AssertSegundoFactorNoSeRegala` | `Muni\Shared\*` | ✅ extraída (en producción la MFA ni se apaga ni se regala) |
 | `LocalPersonaResolver` / `PersonaResolverConRespaldo` | — | quedan LOCALES: dependen del modelo `Persona` y sus relaciones de dominio (disc `discapacidades()`, feria `puestos()`). Implementan la interfaz compartida. |
 
 ## Instalación (repositorio privado por VCS)
@@ -211,6 +218,133 @@ return [
     ],
 ];
 ```
+
+## Adopción de lo pequeño (§1.5): qué borra cada sistema y qué configura
+
+Seis piezas que vivían copiadas entre 5 y 7 veces. Se adoptan de a una y en
+cualquier orden; ninguna depende de las otras. **Ninguna necesita Filament ni
+Pest**: los dos traits de aserto son de PHPUnit puro, así que `atencionvecino`
+—Blade sin Filament, PHPUnit 11 sin Pest— los usa igual.
+
+### 1. `Casts\EncryptedSeguro` — 7 sistemas
+
+| Se borra | Se cambia |
+|---|---|
+| `app/Casts/EncryptedSeguro.php` | el `use App\Casts\EncryptedSeguro;` de cada modelo pasa a `use Muni\Shared\Casts\EncryptedSeguro;` |
+
+Nada más: el comportamiento es idéntico byte a byte, a propósito. Cambiarlo
+dejaría ilegibles columnas que ya están escritas en siete bases de producción.
+
+Para evidencia ARCOP no se usa este cast sino `Privacidad\CifradoCast`, que ante
+un ciphertext manipulado truena en vez de devolver el valor crudo.
+
+### 2. `Errores\ReporteDeErrores` — 7 sistemas
+
+| Se borra | Se cambia |
+|---|---|
+| `app/Support/ReporteDeErrores.php` | el `use` en `bootstrap/app.php` |
+
+La llamada no cambia (`ReporteDeErrores::vaADestinoPropio()`), así que el candado
+`Muni\Candados\Candados\ErroresNoSalenDelPais` sigue verde **si se le dice dónde
+está ahora la clase**:
+
+```php
+(new ErroresNoSalenDelPais(clase: \Muni\Shared\Errores\ReporteDeErrores::class))->registrar();
+```
+
+Sin ese argumento el candado busca `App\Support\ReporteDeErrores`, que ya no
+existe, y falla con «nadie decide a dónde van las trazas de este sistema».
+
+La lista de destinos ajenos **no** es configurable: una lista que se puede
+acortar desde un `.env` no es un candado.
+
+### 3. `asset_versionado()` — 7 sistemas
+
+| Se borra | Se cambia |
+|---|---|
+| `app/Helpers/assets.php` y su entrada en `autoload.files` de `composer.json` | nada: las plantillas Blade siguen llamando `asset_versionado(...)` |
+
+Después de borrarlo, `composer dump-autoload`. Mientras dure la transición los
+dos archivos pueden convivir: la función del paquete lleva su guarda
+`function_exists`.
+
+**`web-graneros` es el caso especial:** su `assets.php` tiene además
+`paquete_de_estilos()`, que es propia del empaquetado de CSS de ese sitio. Ese
+archivo se recorta a esa función; `asset_versionado()` se borra igual.
+
+### 4. `env:clean-data` — 5 sistemas (+ los dos scaffolds y web-graneros-centinela)
+
+| Se borra | Se configura |
+|---|---|
+| `app/Console/Commands/CleanData.php` | nada, salvo que el sistema tenga tablas operativas propias |
+
+El comando se registra solo y conserva su nombre, así que Makefiles, runbooks y
+`docs/DOCUMENTACION_TECNICA.md` siguen siendo válidos. Si hay tablas operativas
+propias:
+
+```bash
+php artisan vendor:publish --tag=datos-operativos-config
+```
+
+y se agregan a `config/datos-operativos.php`. Los valores por omisión son los
+cuatro que tenía la constante (`onboarding_progress`, `jobs`, `job_batches`,
+`failed_jobs`) más `activity_log` bajo `--auditoria`.
+
+Detalle que importa fuera de MariaDB: el comando ahora usa
+`Schema::withoutForeignKeyConstraints()` en vez de `SET FOREIGN_KEY_CHECKS=0`.
+
+### 5. `config/permission.php` — el archivo NO se borra
+
+Medido valor por valor: los 7 sistemas coinciden en todo, y lo único que se
+aparta del valor por omisión de `spatie/laravel-permission` es
+`register_octane_reset_listener => true`. Traer el archivo entero ataría este
+paquete al esquema de configuración de spatie —las copias de cinco sistemas ya
+se quedaron sin `models.team` y `models.default_model`, agregadas después— para
+custodiar un booleano.
+
+| Se borra | Se agrega |
+|---|---|
+| nada del `config/` | una prueba de tres líneas |
+
+```php
+use Muni\Shared\Testing\AssertPermisosNoSeQuedanPegados;
+
+uses(AssertPermisosNoSeQuedanPegados::class);
+
+it('los permisos no se quedan pegados entre peticiones de Octane', function () {
+    static::assertPermisosNoSeQuedanPegados();
+});
+```
+
+Los dos sistemas con la copia de 206 renglones del vendor (`discapacidad`,
+`feria`) pueden recortarla a la de 52 que tienen los otros cinco: los valores son
+los mismos.
+
+### 6. `config/mfa.php` — el archivo NO se mueve
+
+Es la única de las seis piezas que **no** era el mismo archivo: los siete son
+cinco variantes distintas (`atencionvecino` describe un TOTP con `emisor` y sin
+`show_code`; `control-acceso` agrega el tope de códigos enviados). Y esa
+configuración ya tiene dueño: `laravel-muni-acceso` la expone como `acceso.mfa.*`
+leyendo las mismas variables de entorno (`MFA_ENABLED`, `MFA_SHOW_CODE`). Un
+`mfa.*` en este paquete sería un segundo interruptor para la misma cerradura.
+
+Lo que las siete variantes sí comparten es una advertencia escrita en un
+comentario que hoy no hace cumplir nadie. Eso es lo que viaja:
+
+```php
+use Muni\Shared\Testing\AssertSegundoFactorNoSeRegala;
+
+uses(AssertSegundoFactorNoSeRegala::class);
+
+it('en producción el segundo factor ni se apaga ni se regala', function () {
+    // La suite corre con APP_ENV=testing: lo que se ejercita es qué pasaría
+    // con esta configuración en producción.
+    static::assertSegundoFactorNoSeRegala(enProduccion: true);
+});
+```
+
+Lee `mfa.*` o `acceso.mfa.*`, la que exista, y no escribe ninguna configuración.
 
 ## Módulo Privacidad (Ley 21.719)
 

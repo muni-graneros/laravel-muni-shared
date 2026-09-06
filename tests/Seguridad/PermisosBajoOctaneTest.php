@@ -1,5 +1,6 @@
 <?php
 
+use Laravel\Octane\Octane;
 use Muni\Shared\Seguridad\PermisosBajoOctane;
 use Muni\Shared\Testing\AssertPermisosNoSeQuedanPegados;
 use PHPUnit\Framework\AssertionFailedError;
@@ -62,3 +63,14 @@ it('el aserto falla cuando el flag se apaga', function () {
 
     static::assertPermisosNoSeQuedanPegados(conOctane: true);
 })->throws(AssertionFailedError::class);
+
+it('sin argumento detecta sola que Octane no está instalado, sin reventar', function () {
+    // `laravel/octane` NO es dependencia de este paquete: el `use` del import
+    // tiene que quedar inerte y `class_exists()` devolver false en vez de un
+    // fatal. Si alguien cambia la detección por algo que instancie la clase,
+    // esta prueba lo agarra antes que los ocho sistemas.
+    config()->set('permission.register_octane_reset_listener', false);
+
+    expect(class_exists(Octane::class))->toBeFalse()
+        ->and(PermisosBajoOctane::problemas())->toBe([]);
+});
