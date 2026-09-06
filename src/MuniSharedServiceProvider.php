@@ -6,6 +6,7 @@ use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\ServiceProvider;
 use Muni\Shared\Console\ConfigurarCorreoCommand;
+use Muni\Shared\Console\LimpiarDatosOperativosCommand;
 use Muni\Shared\Console\MuniDocsCommand;
 use Muni\Shared\Console\ProbarCorreoCommand;
 use Muni\Shared\Correo\TransporteGraph;
@@ -38,6 +39,7 @@ class MuniSharedServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/correo-graph.php', 'mail.mailers.graph');
         $this->mergeConfigFrom(__DIR__.'/../config/privacidad.php', 'privacidad');
         $this->mergeConfigFrom(__DIR__.'/../config/credenciales-de-plantilla.php', 'credenciales-de-plantilla');
+        $this->mergeConfigFrom(__DIR__.'/../config/datos-operativos.php', 'datos-operativos');
 
         // Enlace por defecto: un sistema que ya tenga su propia trazabilidad
         // puede sustituirlo sin tocar el módulo.
@@ -78,6 +80,10 @@ class MuniSharedServiceProvider extends ServiceProvider
             ], 'credenciales-de-plantilla-config');
 
             $this->publishes([
+                __DIR__.'/../config/datos-operativos.php' => config_path('datos-operativos.php'),
+            ], 'datos-operativos-config');
+
+            $this->publishes([
                 __DIR__.'/../stubs/privacidad' => base_path('docs/privacidad'),
             ], 'privacidad-stubs');
         }
@@ -90,6 +96,7 @@ class MuniSharedServiceProvider extends ServiceProvider
                 MuniDocsCommand::class,
                 ProbarCorreoCommand::class,
                 ConfigurarCorreoCommand::class,
+                LimpiarDatosOperativosCommand::class,
                 AplicarRetencionCommand::class,
                 CifrarTextoLibreCommand::class,
                 DiagnosticoCommand::class,

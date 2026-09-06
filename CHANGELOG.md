@@ -39,6 +39,14 @@ Versionado: [SemVer](https://semver.org/lang/es/).
   fatal mientras dura la adopción. El paquete pasa a declarar `autoload.files`; quien
   actualice desde una versión anterior con el autoloader ya generado necesita un
   `composer dump-autoload` (lo hace solo `composer update`).
+- `Console\LimpiarDatosOperativosCommand`: el comando `env:clean-data` (mismo nombre
+  de siempre, para no invalidar Makefiles ni runbooks), copiado byte a byte en 5 de los
+  8 sistemas y en los dos scaffolds. Se registra solo. Dos cambios respecto de la copia
+  local: la lista de tablas sale de `config/datos-operativos.php` (tag
+  `datos-operativos-config`) en vez de una constante, y las claves foráneas se
+  desactivan con `Schema::withoutForeignKeyConstraints()` en vez de
+  `SET FOREIGN_KEY_CHECKS=0`, que era SQL de MySQL/MariaDB y hacía imposible probar el
+  comando fuera de ese motor.
 
 ### Notas de adopción
 - `filament/filament`, `spatie/laravel-permission` y `spatie/laravel-activitylog`
