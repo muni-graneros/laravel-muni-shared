@@ -80,6 +80,18 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 - Cada sistema que adopte esto borra su `app/Policies/RolePolicy.php`,
   `app/Policies/ActivityPolicy.php` y su `ListActivities`, y apunta a las clases del
   paquete.
+- **Nada de lo agregado en esta versión necesita Filament ni Pest.** Verificado por
+  reflexión con el autoloader del paquete: las siete clases y los dos traits nuevos solo
+  dependen de `Illuminate\*`, `PHPUnit\Framework\Assert` y del propio `Muni\Shared`.
+  `PermisosBajoOctane` menciona `Laravel\Octane\Octane` únicamente dentro de un
+  `class_exists()`, y `laravel/octane` no es dependencia del paquete: hay una prueba que
+  lo comprueba.
+- El paso a paso de qué borra y qué configura cada uno de los ocho sistemas está en el
+  README, sección «Adopción de lo pequeño (§1.5)». Dos avisos que no se pueden saltear:
+  tras borrar `app/Helpers/assets.php` hay que correr `composer dump-autoload`, y el
+  candado `Muni\Candados\Candados\ErroresNoSalenDelPais` necesita que se le pase
+  `clase: \Muni\Shared\Errores\ReporteDeErrores::class` o seguirá buscando la clase
+  borrada.
 
 ## [1.19.0] - 2026-09-05
 
