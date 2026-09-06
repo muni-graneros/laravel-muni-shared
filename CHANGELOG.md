@@ -30,6 +30,15 @@ Versionado: [SemVer](https://semver.org/lang/es/).
   de los 8 sistemas. La lista de destinos ajenos **no** es configurable a propósito:
   una lista que se puede acortar desde un `.env` no es un candado. `bootstrap/app.php`
   la sigue usando igual, cambiando solo el `use`.
+- `Assets::versionado()` y la función global `asset_versionado()`: la URL de asset
+  versionada por `mtime` que vivía en `app/Helpers/assets.php` en 7 de los 8 sistemas.
+  Se exponen las DOS formas a propósito: la clase es lo que se prueba y lo que ve
+  PHPStan; la función global es lo que ya escriben las plantillas Blade, así que
+  adoptar el paquete no obliga a editar ninguna vista. La función conserva su guarda
+  `function_exists`, de modo que el archivo del sistema y el del paquete conviven sin
+  fatal mientras dura la adopción. El paquete pasa a declarar `autoload.files`; quien
+  actualice desde una versión anterior con el autoloader ya generado necesita un
+  `composer dump-autoload` (lo hace solo `composer update`).
 
 ### Notas de adopción
 - `filament/filament`, `spatie/laravel-permission` y `spatie/laravel-activitylog`
