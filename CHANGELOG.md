@@ -9,7 +9,24 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
-_Nada todavía._
+### Añadido
+- `Auditoria\RolePolicy` y `Auditoria\ActivityPolicy`: las políticas de los Resources
+  de Roles y de Auditoría del panel, que vivían copiadas byte a byte en 7 de los 8
+  sistemas. Delegan en los permisos que genera Filament Shield (`view_any_role`,
+  `create_role`, …), así que **no** hardcodean ningún nombre de rol: la diferencia
+  entre `super_admin` y `administrador` la sigue resolviendo el `Gate::before` de
+  cada sistema, fuera de la política.
+- `Auditoria\Pages\ListActivitiesBase`: página base del listado de auditoría. No fija
+  `$resource` — cada sistema la extiende apuntando a SU `ActivityResource` local.
+
+### Notas de adopción
+- `filament/filament`, `spatie/laravel-permission` y `spatie/laravel-activitylog`
+  entran como `suggest`, **no** como dependencia dura: `atencionvecino` consume este
+  paquete (Privacidad, Persona, Correo) sin Filament y no debe instalarlos solo por
+  actualizar.
+- Cada sistema que adopte esto borra su `app/Policies/RolePolicy.php`,
+  `app/Policies/ActivityPolicy.php` y su `ListActivities`, y apunta a las clases del
+  paquete.
 
 ## [1.19.0] - 2026-09-05
 

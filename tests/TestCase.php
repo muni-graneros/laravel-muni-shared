@@ -6,6 +6,8 @@ use Illuminate\Encryption\Encrypter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Muni\Shared\MuniSharedServiceProvider;
 use Orchestra\Testbench\TestCase as Base;
+use Spatie\Activitylog\ActivitylogServiceProvider;
+use Spatie\Permission\PermissionServiceProvider;
 
 /**
  * Base de las pruebas del paquete.
@@ -24,7 +26,15 @@ abstract class TestCase extends Base
      */
     protected function getPackageProviders($app): array
     {
-        return [MuniSharedServiceProvider::class];
+        return [
+            MuniSharedServiceProvider::class,
+            // Ambos son dependencias opcionales del paquete (ver "suggest" en
+            // composer.json: RolePolicy y ActivityPolicy no las necesitan
+            // instaladas para autocargar, solo para probarlas). Acá SÍ están,
+            // como require-dev, porque este es el propio paquete probándose.
+            PermissionServiceProvider::class,
+            ActivitylogServiceProvider::class,
+        ];
     }
 
     /**
