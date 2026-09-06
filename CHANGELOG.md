@@ -18,6 +18,13 @@ Versionado: [SemVer](https://semver.org/lang/es/).
   cada sistema, fuera de la política.
 - `Auditoria\Pages\ListActivitiesBase`: página base del listado de auditoría. No fija
   `$resource` — cada sistema la extiende apuntando a SU `ActivityResource` local.
+- `Casts\EncryptedSeguro`: el cast de cifrado en reposo que tolera las filas heredadas
+  en texto plano, copiado byte a byte en 7 de los 8 sistemas (todos menos
+  `atencionvecino`, que no lo tenía). Se porta con el comportamiento EXACTO —cambiarlo
+  dejaría ilegible lo que ya está escrito en siete bases de producción—. No reemplaza a
+  `Privacidad\CifradoCast`: aquel truena ante un ciphertext manipulado, que es lo que
+  se quiere para la evidencia ARCOP; este devuelve el valor crudo, que es lo que se
+  quiere en una columna operativa a medio migrar.
 
 ### Notas de adopción
 - `filament/filament`, `spatie/laravel-permission` y `spatie/laravel-activitylog`
