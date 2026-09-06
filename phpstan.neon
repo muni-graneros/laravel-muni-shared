@@ -103,13 +103,14 @@ parameters:
             paths:
                 - src/Console/MuniDocsCommand.php
 
-        # AssertEnvExampleCompleto solo lo usan los tests de cada adoptante
-        # (tests/Feature/EnvExampleCompletoTest.php de cada sistema): dentro de
-        # ESTE paquete no hay ningún `uses()` que lo ejercite —solo lo prueba
-        # tests/Testing/AssertEnvExampleCompletoTest.php pasándole las rutas a
-        # mano—, y PHPStan no puede inferir el tipo de `$this` en un trait sin
-        # ver un sitio que lo use. Ver el docblock del trait mismo.
+        # Los traits de aserto (`Assert*`) solo los usan los tests de cada
+        # adoptante (tests/Feature/EnvExampleCompletoTest.php de cada sistema, y
+        # el equivalente para los permisos bajo Octane): dentro de ESTE paquete
+        # el único `uses()` está en la prueba del propio trait, que le pasa los
+        # argumentos a mano, y PHPStan no puede inferir el tipo de `$this` en un
+        # trait sin ver un sitio que lo use. Ver el docblock de cada trait.
         -
             identifier: trait.unused
             paths:
                 - src/Testing/AssertEnvExampleCompleto.php
+                - src/Testing/AssertPermisosNoSeQuedanPegados.php

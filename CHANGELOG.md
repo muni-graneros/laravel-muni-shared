@@ -47,6 +47,13 @@ Versionado: [SemVer](https://semver.org/lang/es/).
   desactivan con `Schema::withoutForeignKeyConstraints()` en vez de
   `SET FOREIGN_KEY_CHECKS=0`, que era SQL de MySQL/MariaDB y hacía imposible probar el
   comando fuera de ese motor.
+- `Seguridad\PermisosBajoOctane` + `Testing\AssertPermisosNoSeQuedanPegados`: el
+  candado de que `permission.register_octane_reset_listener` esté en `true` donde corre
+  Octane. Es lo que se extrae de `config/permission.php` **en lugar del archivo**: los 7
+  sistemas que lo publicaron coinciden en todos los valores y ese booleano es el único
+  que se aparta del default de spatie (`false`). Con el flag apagado, el registro de
+  permisos sobrevive entre peticiones del mismo worker y a quien se le revoca un rol se
+  lo sigue reconociendo. El trait es de PHPUnit y no necesita Pest.
 
 ### Notas de adopción
 - `filament/filament`, `spatie/laravel-permission` y `spatie/laravel-activitylog`
