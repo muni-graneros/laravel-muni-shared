@@ -54,6 +54,23 @@ Versionado: [SemVer](https://semver.org/lang/es/).
   que se aparta del default de spatie (`false`). Con el flag apagado, el registro de
   permisos sobrevive entre peticiones del mismo worker y a quien se le revoca un rol se
   lo sigue reconociendo. El trait es de PHPUnit y no necesita Pest.
+- `Seguridad\SegundoFactorEnProduccion` + `Testing\AssertSegundoFactorNoSeRegala`:
+  con `APP_ENV=production`, el segundo factor ni se apaga (`mfa.enabled` /
+  `acceso.mfa.activa` en `false`) ni se regala (`mfa.show_code` /
+  `acceso.mfa.mostrar_codigo` en `true`, que pinta el código en la propia pantalla de
+  verificación). Lee la configuración que exista y **no escribe ninguna**.
+
+### No portado, y por qué
+- **`config/mfa.php` NO se mueve a este paquete.** Los siete archivos son cinco
+  variantes distintas —`atencionvecino` describe un TOTP con `emisor` y sin
+  `show_code`, `control-acceso` agrega el tope de códigos enviados— y, sobre todo, esa
+  configuración ya tiene dueño: `laravel-muni-acceso` la expone como `acceso.mfa.*`
+  leyendo las mismas variables de entorno (`MFA_ENABLED`, `MFA_SHOW_CODE`). Un `mfa.*`
+  acá sería un segundo interruptor para la misma cerradura, que es peor que la copia.
+  Lo que sí viaja es la regla que los siete comentan y ninguno hace cumplir, arriba.
+- **`config/permission.php` tampoco.** Es el config que publica `spatie/laravel-permission`:
+  traerlo ataría este paquete al esquema de configuración de spatie para custodiar un
+  booleano. Viaja el booleano, como candado.
 
 ### Notas de adopción
 - `filament/filament`, `spatie/laravel-permission` y `spatie/laravel-activitylog`

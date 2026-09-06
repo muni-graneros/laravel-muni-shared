@@ -114,3 +114,4 @@ parameters:
             paths:
                 - src/Testing/AssertEnvExampleCompleto.php
                 - src/Testing/AssertPermisosNoSeQuedanPegados.php
+                - src/Testing/AssertSegundoFactorNoSeRegala.php
