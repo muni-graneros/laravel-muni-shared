@@ -9,6 +9,11 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+_Nada todavía._
+
+## [1.21.0] - 2026-09-07
+
+
 ### Añadido
 - `Onboarding\OnboardingTourPolicy`: la política del Resource de Onboarding del
   panel, byte a byte idéntica en los 8 sistemas del ecosistema con panel Filament
@@ -66,6 +71,15 @@ Versionado: [SemVer](https://semver.org/lang/es/).
   clases de `filament/filament` (como ya hacía `ListActivitiesBase`), que sigue
   siendo `suggest`.
 
+### Corregido
+
+- Los candados `CredencialesDePlantilla` y `SegundoFactorEnProduccion` forzaban
+  `app()['env'] = 'production'` para probarse y lo dejaban puesto. Contra SQLite
+  no se notaba; contra MariaDB, la migración del caso siguiente entraba en la
+  confirmación de `ConfirmableTrait` y ocho casos morían con un
+  `BadMethodCallException` sobre el `OutputStyle` simulado que no menciona el
+  entorno. Ahora restauran `testing` en un `afterEach`. Detectado por
+  `composer test:mariadb`, que es para lo que existe.
 ## [1.20.0] - 2026-09-06
 
 ### Añadido
