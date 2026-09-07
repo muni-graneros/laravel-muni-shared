@@ -141,11 +141,23 @@ Versionado: [SemVer](https://semver.org/lang/es/).
   paquete. El detalle por sistema —incluida la divergencia real de namespace de
   `discapacidad-graneros` y la deuda de estilo de `feria-graneros`— está en el
   README, sección «Adopción de RolePolicy, ActivityPolicy y ListActivitiesBase
-  (§1.4)». `personas-graneros` y los 4 repos de KraftDo quedaron fuera a
-  propósito: el primero no requiere este paquete y su `RolePolicy` local tiene
-  placeholders de Shield sin completar (`'{{ ForceDelete }}'`, …) que no se
-  tocaron por ser código fuera de este repo; los de KraftDo son de otra
-  entidad y no comparten paquete con la Municipalidad.
+  (§1.4)». Los 4 repos de KraftDo quedan fuera: son de otra entidad y no
+  comparten paquete con la Municipalidad.
+- **Corrección (07-09), sobre lo que decía esta misma entrada:** era falso que
+  `personas-graneros` no requiera este paquete. Lo requiere desde julio, con el
+  lock en v1.10.1 —anterior a que existiera `Auditoria\RolePolicy`—, y sus
+  marcadores de Shield sin rellenar sí se arreglaron, en su propia copia local
+  (`8fa2a24`): seis métodos (`forceDelete`, `forceDeleteAny`, `restore`,
+  `restoreAny`, `replicate`, `reorder`) comparaban contra `'{{ ForceDelete }}'`
+  y compañía, así que denegaban a todos salvo al `super_admin` que salva el
+  `Gate::before`.
+- **Trampa al adoptar, que costó descubrir:** `bezhansalleh/filament-shield`
+  registra la policy de Roles con una ruta **hardcodeada**
+  (`Gate::policy(Utils::getRoleModel(), 'App\Policies\RolePolicy')`) y solo si
+  el archivo existe en disco. O sea que el sistema que adopte la clase del
+  paquete **no puede borrar su `app/Policies/RolePolicy.php`**: tiene que
+  dejarlo como fachada vacía que extienda la del paquete. Borrarlo deja la
+  policy sin registrar y todo pasa a decidirlo el `Gate::before`.
 - **Nada de lo agregado en esta versión necesita Filament ni Pest.** Verificado por
   reflexión con el autoloader del paquete: las siete clases y los dos traits nuevos solo
   dependen de `Illuminate\*`, `PHPUnit\Framework\Assert` y del propio `Muni\Shared`.
