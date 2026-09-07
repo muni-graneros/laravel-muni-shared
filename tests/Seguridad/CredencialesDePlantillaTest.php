@@ -9,6 +9,20 @@ use Muni\Shared\Seguridad\CredencialesDePlantilla;
  * scaffold, que hasta esta versión era la ÚNICA protección: los ocho sistemas
  * generados a partir de él no tenían la clase.
  */
+/**
+ * El entorno se restaura después de CADA caso.
+ *
+ * Estos candados fuerzan `production` para probarse, y hasta ahora lo dejaban
+ * puesto. Con SQLite en memoria daba igual —la base ya estaba migrada—, pero
+ * contra MariaDB la migración del caso siguiente entra en la confirmación de
+ * `ConfirmableTrait` («¿de verdad querés correr esto en producción?») y la
+ * suite muere con un BadMethodCallException sobre el OutputStyle simulado, que
+ * no dice nada del entorno. Ocho casos en rojo solo al correr `test:mariadb`.
+ */
+afterEach(function () {
+    app()['env'] = 'testing';
+});
+
 it('en producción, la contraseña de plantilla de la base de datos aborta el arranque', function () {
     app()['env'] = 'production';
     config()->set('database.connections.testing.password', 'sistema_pass');

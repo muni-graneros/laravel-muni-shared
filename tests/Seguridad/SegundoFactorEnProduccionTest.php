@@ -24,6 +24,20 @@ beforeEach(function () {
     $this->app['env'] = 'production';
 });
 
+/**
+ * El entorno se restaura después de CADA caso.
+ *
+ * Estos candados fuerzan `production` para probarse, y hasta ahora lo dejaban
+ * puesto. Con SQLite en memoria daba igual —la base ya estaba migrada—, pero
+ * contra MariaDB la migración del caso siguiente entra en la confirmación de
+ * `ConfirmableTrait` («¿de verdad querés correr esto en producción?») y la
+ * suite muere con un BadMethodCallException sobre el OutputStyle simulado, que
+ * no dice nada del entorno. Ocho casos en rojo solo al correr `test:mariadb`.
+ */
+afterEach(function () {
+    app()['env'] = 'testing';
+});
+
 it('no objeta nada con el segundo factor encendido y el código oculto', function (string $prefijo) {
     config()->set($prefijo, ['enabled' => true, 'activa' => true, 'show_code' => false, 'mostrar_codigo' => false]);
 
