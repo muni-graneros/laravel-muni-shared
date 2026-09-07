@@ -20,6 +20,7 @@ bug N veces. Ver Frente 22 del ROADMAP de `plataforma-graneros`.
 | `Testing\ContratoDeEnvExample` / `AssertEnvExampleCompleto` | `Muni\Shared\Testing\*` | ✅ extraída (compara `config/` contra `.env.example`, ver más abajo) |
 | `Seguridad\CredencialesDePlantilla` | `Muni\Shared\Seguridad\CredencialesDePlantilla` | ✅ extraída (aborta el arranque en producción si queda una contraseña del `.env.example`, ver más abajo) |
 | `Auditoria\RolePolicy` / `ActivityPolicy` / `Pages\ListActivitiesBase` | `Muni\Shared\Auditoria\*` | ✅ extraída (políticas y listado del panel; requiere Filament + spatie, que son `suggest`) |
+| `Onboarding\OnboardingTourPolicy` / `Pages\{List,Edit,Create}OnboardingTourBase` | `Muni\Shared\Onboarding\*` | ✅ extraída (política y las tres páginas del Resource; requiere Filament, que es `suggest`) |
 | `Casts\EncryptedSeguro` | `Muni\Shared\Casts\EncryptedSeguro` | ✅ extraída (cifrado en reposo que tolera filas heredadas en claro) |
 | `Errores\ReporteDeErrores` | `Muni\Shared\Errores\ReporteDeErrores` | ✅ extraída (las trazas no salen del país, Ley 21.719) |
 | `Assets` + `asset_versionado()` | `Muni\Shared\Assets` | ✅ extraída (URL de asset versionada por `mtime`; la función global sigue disponible) |
@@ -438,7 +439,127 @@ it('en producción el segundo factor ni se apaga ni se regala', function () {
 
 Lee `mfa.*` o `acceso.mfa.*`, la que exista, y no escribe ninguna configuración.
 
-## Módulo Privacidad (Ley 21.719)
+## Adopción de OnboardingTourPolicy y las páginas de Onboarding (§1.6): qué borra cada sistema y qué configura
+
+Comparadas las 9 copias en disco (8 sistemas municipales con panel Filament +
+`atencionvecino`, que no tiene panel Filament ni el módulo). El módulo entero
+—política y las tres páginas del Resource— es la duplicación más clara que
+quedaba en el ecosistema: una funcionalidad completa copiada, no un
+fragmento.
+
+### `OnboardingTourPolicy` — idéntica byte a byte en los 8
+
+| Se borra | Se cambia |
+|---|---|
+| `app/Policies/OnboardingTourPolicy.php` | la `policy()` que la registra (o el auto-discovery de Filament Shield) apunta a `Muni\Shared\Onboarding\OnboardingTourPolicy` |
+
+Delega todo en los permisos que Filament Shield ya genera
+(`view_any_onboarding_tour`, `create_onboarding_tour`, …), igual que
+`RolePolicy`/`ActivityPolicy`. La diferencia real con esas dos: el modelo que
+autoriza (`App\Models\OnboardingTour`) es **local** de cada sistema, no un
+modelo de un vendor que este paquete pueda requerir, así que la política del
+paquete tipa `Illuminate\Database\Eloquent\Model` en vez del modelo
+concreto. Laravel resuelve la política por la clase del modelo
+(`Gate::getPolicyFor()`) y la invoca con la instancia real; el tipo más
+genérico no cambia a quién autoriza.
+
+### `ListOnboardingTours` — idéntica en 7 de 8; `licencias-graneros` diverge solo en estilo
+
+| Se borra | Se cambia |
+|---|---|
+| el `ListOnboardingTours.php` del sistema | pasa a extender `Muni\Shared\Onboarding\Pages\ListOnboardingToursBase` en vez de `Filament\Resources\Pages\ListRecords` |
+
+`licencias-graneros` importaba `Filament\Actions` y llamaba
+`Actions\CreateAction::make()` en vez de `use Filament\Actions\CreateAction;`
++ `CreateAction::make()` — mismo `CreateAction`, otro estilo de `use`. Se
+borra igual que las otras siete.
+
+A diferencia de `Auditoria\ListActivitiesBase` —que queda vacía porque el
+listado de auditoría no traía ninguna acción de cabecera—, acá SÍ viaja
+`getHeaderActions()`: los 8 sistemas traían idéntico
+`[CreateAction::make()]`, así que es funcionalidad duplicada, no solo el
+sitio de herencia.
+
+```php
+namespace App\Filament\Resources\OnboardingTourResource\Pages;
+
+use App\Filament\Resources\OnboardingTourResource;
+use Muni\Shared\Onboarding\Pages\ListOnboardingToursBase;
+
+class ListOnboardingTours extends ListOnboardingToursBase
+{
+    protected static string $resource = OnboardingTourResource::class;
+}
+```
+
+### `EditOnboardingTour` — idéntica en 6 de 8; `licencias-graneros` y `feria-graneros` divergen solo en estilo
+
+| Se borra | Se cambia |
+|---|---|
+| el `EditOnboardingTour.php` del sistema | pasa a extender `Muni\Shared\Onboarding\Pages\EditOnboardingTourBase` en vez de `Filament\Resources\Pages\EditRecord` |
+
+Mismo patrón de estilo que `ListOnboardingTours` (`Actions\DeleteAction::make()`
+contra `DeleteAction::make()`), la misma generación más vieja de Filament
+Shield que ya se documentó en `ActivityPolicy` (§1.4). También trae
+`getHeaderActions()` con `[DeleteAction::make()]`, idéntico en los 8.
+
+```php
+namespace App\Filament\Resources\OnboardingTourResource\Pages;
+
+use App\Filament\Resources\OnboardingTourResource;
+use Muni\Shared\Onboarding\Pages\EditOnboardingTourBase;
+
+class EditOnboardingTour extends EditOnboardingTourBase
+{
+    protected static string $resource = OnboardingTourResource::class;
+}
+```
+
+### `CreateOnboardingTour` — idéntica byte a byte en los 8
+
+| Se borra | Se cambia |
+|---|---|
+| el `CreateOnboardingTour.php` del sistema | pasa a extender `Muni\Shared\Onboarding\Pages\CreateOnboardingTourBase` en vez de `Filament\Resources\Pages\CreateRecord` |
+
+Sin acciones de cabecera propias —Filament ya pone "Crear" solo—, así que
+esta base queda tan vacía como `Auditoria\ListActivitiesBase`.
+
+```php
+namespace App\Filament\Resources\OnboardingTourResource\Pages;
+
+use App\Filament\Resources\OnboardingTourResource;
+use Muni\Shared\Onboarding\Pages\CreateOnboardingTourBase;
+
+class CreateOnboardingTour extends CreateOnboardingTourBase
+{
+    protected static string $resource = OnboardingTourResource::class;
+}
+```
+
+En los 8 sistemas `$resource` **no** se fija en el paquete: cada uno tiene
+su propio `OnboardingTourResource`, con su propio formulario y sus propias
+columnas de tabla, y eso no es portable. `discapacidad-graneros`, a
+diferencia de lo que pasó con `ActivityResource`, **no diverge en
+namespace** acá: su `OnboardingTourResource` vive en el mismo
+`App\Filament\Resources\...` que los demás siete, así que el patrón de
+arriba se aplica sin cambios.
+
+### Qué NO se cubrió, y por qué
+
+- **El modelo `App\Models\OnboardingTour`, su Resource
+  (`OnboardingTourResource.php`) y el `OnboardingToursSeeder` NO se mueven.**
+  El modelo diverge de verdad entre sistemas (comparados por `md5sum`:
+  5 de 8 idénticos, `discapacidad`/`licencias`/`feria` con distintos
+  bloques de PHPDoc generados por `ide-helper`, sin diferencia funcional) y,
+  sobre todo, es lo mismo que `LocalPersonaResolver`: depende de relaciones
+  de dominio propias de cada sistema (`steps()`, `progress()`) que este
+  paquete no puede poseer. El Resource tiene su propio formulario y tabla
+  por sistema y tampoco es portable. Solo la Policy y las tres páginas —que
+  no dependen de ningún campo ni relación del modelo— cruzan al paquete.
+- **`atencionvecino`** no tiene panel Filament (Laravel 12, Blade puro):
+  no tiene el módulo de Onboarding y no es candidato.
+
+
 
 Cubre el registro de actividades de tratamiento, el consentimiento por
 finalidad, los derechos ARCOP con control de plazo, la retención con supresión

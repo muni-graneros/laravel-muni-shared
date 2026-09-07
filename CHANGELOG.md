@@ -9,7 +9,62 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
-_Nada todavía._
+### Añadido
+- `Onboarding\OnboardingTourPolicy`: la política del Resource de Onboarding del
+  panel, byte a byte idéntica en los 8 sistemas del ecosistema con panel Filament
+  (`atencionvecino` no tiene panel Filament). Mismo patrón que
+  `Auditoria\RolePolicy`/`ActivityPolicy`: delega todo en los permisos que Filament
+  Shield genera (`view_any_onboarding_tour`, `create_onboarding_tour`, …), sin
+  hardcodear ningún nombre de rol. Diferencia real con esas dos: el modelo que
+  autoriza (`App\Models\OnboardingTour`) es LOCAL de cada sistema —no un modelo de
+  un vendor que este paquete pueda requerir—, así que la política tipa
+  `Illuminate\Database\Eloquent\Model` en vez del modelo concreto.
+- `Onboarding\Pages\ListOnboardingToursBase` / `EditOnboardingTourBase` /
+  `CreateOnboardingTourBase`: las tres páginas del Resource de Onboarding.
+  Ninguna fija `$resource` — cada sistema la extiende apuntando a SU
+  `OnboardingTourResource` local, igual que `Auditoria\Pages\ListActivitiesBase`.
+  A diferencia de esa clase (vacía, porque el listado de auditoría no traía
+  ninguna acción de cabecera), `ListOnboardingToursBase` y
+  `EditOnboardingTourBase` SÍ traen `getHeaderActions()`
+  (`CreateAction`/`DeleteAction` respectivamente): esa lógica también estaba
+  duplicada idéntica en los 8 sistemas, no solo el sitio de herencia.
+
+### No portado, y por qué
+- **El modelo `App\Models\OnboardingTour`, su `OnboardingTourResource.php` y el
+  `OnboardingToursSeeder` NO se mueven.** El modelo diverge de verdad entre
+  sistemas (5 de 8 idénticos por `md5sum`; los otros tres solo difieren en
+  bloques de PHPDoc de `ide-helper`, sin diferencia funcional) y depende de
+  relaciones de dominio propias de cada sistema (`steps()`, `progress()`) que
+  este paquete no puede poseer — mismo motivo que `LocalPersonaResolver`. El
+  Resource tiene su propio formulario y tabla por sistema.
+
+### Notas de adopción
+- Comparadas las 9 copias en disco (8 sistemas municipales + `atencionvecino`,
+  que no tiene el módulo). `OnboardingTourPolicy` y `CreateOnboardingTour` son
+  byte a byte idénticas en los 8. `ListOnboardingTours` diverge SOLO en estilo
+  en `licencias-graneros` (`Actions\CreateAction::make()` contra
+  `CreateAction::make()`, mismo comportamiento). `EditOnboardingTour` diverge
+  igual en `licencias-graneros` y `feria-graneros` (`Actions\DeleteAction::make()`),
+  la misma generación más vieja de Filament Shield ya documentada en
+  `ActivityPolicy` (v1.20.0) — deuda de estilo, no una regla de negocio
+  distinta. A diferencia de `ActivityResource`, `discapacidad-graneros` **no**
+  diverge en namespace para `OnboardingTourResource`: los 8 sistemas usan el
+  mismo `App\Filament\Resources\...`.
+- Cada sistema que adopte esto borra su `app/Policies/OnboardingTourPolicy.php`
+  y las tres páginas de `app/Filament/Resources/OnboardingTourResource/Pages/`,
+  y apunta a las clases del paquete. El detalle por sistema está en el README,
+  sección «Adopción de OnboardingTourPolicy y las páginas de Onboarding
+  (§1.6)».
+- `filament/filament` sigue como `suggest`, no como dependencia dura: el texto
+  del `suggest` en `composer.json` ahora menciona también
+  `Onboarding\Pages\*Base`.
+- **Nada de lo agregado en esta versión necesita spatie/permission ni
+  spatie/activitylog.** Verificado por reflexión: `OnboardingTourPolicy` solo
+  tipa `Illuminate\Foundation\Auth\User` e `Illuminate\Database\Eloquent\Model`
+  en la firma de sus métodos — ninguno de sus parámetros menciona `Filament` ni
+  `Spatie` (hay una prueba que lo comprueba). Las tres páginas base sí importan
+  clases de `filament/filament` (como ya hacía `ListActivitiesBase`), que sigue
+  siendo `suggest`.
 
 ## [1.20.0] - 2026-09-06
 

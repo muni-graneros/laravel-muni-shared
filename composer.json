@@ -34,7 +34,7 @@
         "spatie/laravel-permission": "^7.0"
     },
     "suggest": {
-        "filament/filament": "Para Auditoria\\Pages\\ListActivitiesBase, la página base del listado de auditoría del panel. NO es una dependencia dura: atencionvecino usa este paquete (Privacidad, Persona, Correo) sin Filament (Blade puro) y no debe instalarlo solo por consumir muni-shared.",
+        "filament/filament": "Para Auditoria\\Pages\\ListActivitiesBase y Onboarding\\Pages\\*Base, las páginas base del panel. NO es una dependencia dura: atencionvecino usa este paquete (Privacidad, Persona, Correo) sin Filament (Blade puro) y no debe instalarlo solo por consumir muni-shared.",
         "spatie/laravel-activitylog": "Para Auditoria\\ActivityPolicy, la política del Resource de auditoría del panel. Mismo motivo que filament/filament: opcional.",
         "spatie/laravel-permission": "Para Auditoria\\RolePolicy, la política del Resource de roles del panel. Mismo motivo que filament/filament: opcional."
     },
