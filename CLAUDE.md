@@ -1,7 +1,7 @@
 # CLAUDE.md — laravel-muni-shared
 
 **Entidad: Municipalidad de Graneros.** Paquete Composer privado
-`muni-graneros/laravel-muni-shared`, versión publicada **v1.19.0**.
+`muni-graneros/laravel-muni-shared`, versión publicada **v1.20.0**.
 
 ## Qué es
 
@@ -46,9 +46,10 @@ del ecosistema es MariaDB y la suite en SQLite ya escondió un defecto crítico
    dejarla como "Sin publicar" y cerrarla después: ya pasó dos veces y generó
    un tag con el CHANGELOG desincronizado).
 2. Bump de versión, commit, `git tag vX.Y.Z`.
-3. **El push del tag lo hace César** (`git push origin vX.Y.Z`). Los
-   consumidores resuelven por `type: vcs` + `no-api: true`: `composer update`
-   no ve la versión nueva hasta que el tag esté empujado al remoto.
+3. **El push del tag lo hace César, salvo que pida lo contrario en la sesión.**
+   Los consumidores resuelven por `type: vcs` + `no-api: true`: `composer update`
+   no ve la versión nueva hasta que el tag esté empujado al remoto, así que un
+   tag sin pushear es un tag que no existe para nadie.
 
 ## Consumidores a actualizar tras publicar
 
