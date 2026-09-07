@@ -79,7 +79,14 @@ Versionado: [SemVer](https://semver.org/lang/es/).
   actualizar.
 - Cada sistema que adopte esto borra su `app/Policies/RolePolicy.php`,
   `app/Policies/ActivityPolicy.php` y su `ListActivities`, y apunta a las clases del
-  paquete.
+  paquete. El detalle por sistema —incluida la divergencia real de namespace de
+  `discapacidad-graneros` y la deuda de estilo de `feria-graneros`— está en el
+  README, sección «Adopción de RolePolicy, ActivityPolicy y ListActivitiesBase
+  (§1.4)». `personas-graneros` y los 4 repos de KraftDo quedaron fuera a
+  propósito: el primero no requiere este paquete y su `RolePolicy` local tiene
+  placeholders de Shield sin completar (`'{{ ForceDelete }}'`, …) que no se
+  tocaron por ser código fuera de este repo; los de KraftDo son de otra
+  entidad y no comparten paquete con la Municipalidad.
 - **Nada de lo agregado en esta versión necesita Filament ni Pest.** Verificado por
   reflexión con el autoloader del paquete: las siete clases y los dos traits nuevos solo
   dependen de `Illuminate\*`, `PHPUnit\Framework\Assert` y del propio `Muni\Shared`.

@@ -219,6 +219,98 @@ return [
 ];
 ```
 
+## Adopción de RolePolicy, ActivityPolicy y ListActivitiesBase (§1.4): qué borra cada sistema y qué configura
+
+Comparadas las 15 copias en disco del ecosistema (7 sistemas municipales +
+`atencionvecino` + `web-graneros-centinela` + `scaffold-laravel-filament-pwa` +
+4 repos de KraftDo + `plataforma-graneros/personas-graneros`), **no todas son
+candidatas**: KraftDo es una entidad distinta y no comparte código con la
+Municipalidad bajo ninguna circunstancia, y `personas-graneros` todavía no
+requiere este paquete. Lo que sigue cubre únicamente los sistemas municipales
+que sí lo consumen.
+
+### `RolePolicy` — idéntica byte a byte en los 7 municipales con panel
+
+| Se borra | Se cambia |
+|---|---|
+| `app/Policies/RolePolicy.php` | la `policy()` que la registra (o el auto-discovery de Filament Shield) apunta a `Muni\Shared\Auditoria\RolePolicy` |
+
+Nada más: delega todo en los permisos que Filament Shield ya genera
+(`view_any_role`, `create_role`, …), así que no hay ningún nombre de rol
+(`super_admin` vs `administrador`) que perder — eso lo sigue resolviendo el
+`Gate::before` de cada sistema, fuera de esta política.
+
+### `ActivityPolicy` — idéntica en 6 de 7, `feria-graneros` con una generación más vieja de Shield
+
+| Se borra | Se cambia |
+|---|---|
+| `app/Policies/ActivityPolicy.php` | igual que arriba, apuntando a `Muni\Shared\Auditoria\ActivityPolicy` |
+
+`feria-graneros` tipaba `App\Models\User` en vez de
+`Illuminate\Foundation\Auth\User`, no traía `declare(strict_types=1)` y
+documentaba cada método con un docblock en vez de nada — es un
+`ActivityPolicy` generado por una versión más vieja de Filament Shield. Se
+comprobó método por método contra el permiso que cada uno consulta
+(`force_delete_activity`, `restore_activity`, …): son los mismos doce, en
+otro orden. Es deuda de estilo, no una regla de negocio distinta, así que se
+borra igual que las otras seis.
+
+### `ListActivities` — idéntica en 5 de 7; `discapacidad-graneros` diverge en namespace, y eso es real
+
+| Se borra | Se cambia |
+|---|---|
+| el `ListActivities.php` del sistema | pasa a extender `Muni\Shared\Auditoria\Pages\ListActivitiesBase` en vez de `Filament\Resources\Pages\ListRecords` |
+
+```php
+namespace App\Filament\Resources\ActivityResource\Pages;
+
+use App\Filament\Resources\ActivityResource;
+use Muni\Shared\Auditoria\Pages\ListActivitiesBase;
+
+class ListActivities extends ListActivitiesBase
+{
+    protected static string $resource = ActivityResource::class;
+}
+```
+
+`$resource` **no** se fija en el paquete: cada sistema tiene su propio
+`ActivityResource`, con sus propias columnas de tabla, y eso no es portable —
+es lo único que cada sistema sigue declarando.
+
+`discapacidad-graneros` no es una copia de deuda sino una necesidad real: su
+panel Filament vive en un namespace separado
+(`App\Filament\Discapacidad\Resources\ActivityResource\Pages`, por su panel
+multi-panel), y su `ListActivities` apunta a `ActivityResource` de ESE mismo
+namespace. El patrón de arriba funciona igual ahí, cambiando solo el
+namespace y el `use` de `ActivityResource`; no hace falta nada especial en el
+paquete porque `ListActivitiesBase` es abstracta y no fija ningún namespace.
+`laravel-kraftdo-shared` (KraftDo, otra entidad) resolvió el mismo problema
+con el mismo patrón — `Kraftdo\Shared\Filament\Resources\ActivityResource\Pages`
+extendiendo su propia base —, lo que confirma que la clase abstracta sin
+`$resource` es la forma correcta y no una ocurrencia de este paquete.
+
+### Qué NO se cubrió, y por qué
+
+- **`plataforma-graneros/personas-graneros`** tiene su propio `RolePolicy.php`
+  y `ActivityPolicy.php`, pero no son candidatos de esta migración: nunca
+  llegó a requerir `muni-graneros/laravel-muni-shared`, y su `RolePolicy` ni
+  siquiera es la misma generación de código que las 7 copias unificadas —viene
+  de un `shield:generate` inicial que **nunca se completó con
+  `--option=permissions`** (ver `gotcha_shield_permisos_no_aplicados` y
+  `patron_reversion_userpolicy` en la memoria del ecosistema): `forceDelete`,
+  `forceDeleteAny`, `restore`, `restoreAny`, `replicate` y `reorder` comprueban
+  el permiso literal `'{{ ForceDelete }}'` (y equivalentes), un placeholder de
+  Shield que ningún rol tiene, así que esos seis métodos siempre niegan. No es
+  una necesidad de ese sistema: es el mismo defecto de generación ya
+  documentado en el ecosistema, y corregirlo es tarea de `personas-graneros`
+  cuando adopte este paquete, no de esta extracción — esta sesión no editó
+  nada fuera de `laravel-muni-shared`.
+- **Los 4 repos de KraftDo** (`kraftdo-nfc-v2`, `kraftdo-sitio`, `kraftdo-crm`,
+  `kraftdo-hub`) tienen las tres piezas byte a byte idénticas a la versión
+  unificada de la Municipalidad. No se tocan: KraftDo y la Municipalidad son
+  entidades separadas y este paquete es `muni-graneros/laravel-muni-shared`,
+  no compartido entre ambas.
+
 ## Adopción de lo pequeño (§1.5): qué borra cada sistema y qué configura
 
 Seis piezas que vivían copiadas entre 5 y 7 veces. Se adoptan de a una y en
