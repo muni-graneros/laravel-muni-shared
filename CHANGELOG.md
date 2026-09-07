@@ -9,6 +9,10 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+_Nada todavía._
+
+## [1.20.0] - 2026-09-06
+
 ### Añadido
 - `Auditoria\RolePolicy` y `Auditoria\ActivityPolicy`: las políticas de los Resources
   de Roles y de Auditoría del panel, que vivían copiadas byte a byte en 7 de los 8
