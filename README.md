@@ -556,6 +556,22 @@ arriba se aplica sin cambios.
   paquete no puede poseer. El Resource tiene su propio formulario y tabla
   por sistema y tampoco es portable. Solo la Policy y las tres páginas —que
   no dependen de ningún campo ni relación del modelo— cruzan al paquete.
+- **El `OnboardingController` del API, `config/onboarding.php` y las
+  políticas de paso/progreso (`OnboardingStepPolicy`/`OnboardingProgressPolicy`)
+  tampoco cruzan**, por el mismo motivo que el modelo: no hay clase propia
+  que autoricen. Cada sistema que adopte esto sigue escribiendo su propio
+  controlador local. Antes de escribirlo, conviene revisar
+  `laravel-muni-onboarding` (repo local, archivado, sin remoto y sin
+  adopción — ver el aviso al inicio de su README): ahí quedó documentado, con
+  tests, el catálogo de arreglos que cada sistema había hecho por su lado y
+  nunca había vuelto a los demás (escapado de XSS en `title`/`description`,
+  el candado de IDOR para no resetear el progreso de otro usuario sin
+  permiso, el permiso de administración leído de configuración en vez de un
+  nombre de rol, el `user_id` nulo en `complete()`, el chequeo defensivo de
+  `getRoleNames()`, y `mfa`+`throttle:60,1` en el middleware por defecto). No
+  es código para copiar tal cual —cada sistema tiene su propio modelo y sus
+  propias rutas—, es la lista de bugs ya resueltos que conviene no
+  reintroducir al escribir el controlador propio.
 - **`atencionvecino`** no tiene panel Filament (Laravel 12, Blade puro):
   no tiene el módulo de Onboarding y no es candidato.
 

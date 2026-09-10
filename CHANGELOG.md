@@ -42,6 +42,17 @@ _Nada todavía._
   relaciones de dominio propias de cada sistema (`steps()`, `progress()`) que
   este paquete no puede poseer — mismo motivo que `LocalPersonaResolver`. El
   Resource tiene su propio formulario y tabla por sistema.
+- **El controlador del API (`GET/POST /api/onboarding/*`), su configuración y
+  las políticas de paso/progreso tampoco se mueven**, por el mismo motivo: no
+  hay modelo propio que autoricen. Sistemas que extraen este módulo van a
+  escribir su propio controlador local, así que antes de hacerlo conviene
+  revisar el catálogo de arreglos cruzados entre sistemas —escapado de XSS,
+  candado de IDOR en el reseteo de progreso ajeno, `mfa`/`throttle` por
+  defecto, `user_id` nulo— que quedó documentado (código y tests) en
+  `laravel-muni-onboarding` (repo local archivado, sin remoto ni adopción; ver
+  el aviso al inicio de su README). No es código para copiar tal cual —cada
+  sistema tiene su propio modelo y sus propias rutas—, es la lista de bugs ya
+  resueltos que conviene no reintroducir.
 
 ### Notas de adopción
 - Comparadas las 9 copias en disco (8 sistemas municipales + `atencionvecino`,
