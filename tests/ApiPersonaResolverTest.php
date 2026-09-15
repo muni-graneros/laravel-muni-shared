@@ -1,5 +1,7 @@
 <?php
 
+use GuzzleHttp\Exception\ConnectException;
+use GuzzleHttp\Psr7\Request;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Support\Facades\Http;
 use Muni\Shared\Persona\ApiPersonaResolver;
@@ -109,4 +111,36 @@ it('la excepción del dominio sigue siendo atrapable como RuntimeException por l
 
     expect(fn () => (new ApiPersonaResolver)->findByRut(RUT_DE_PRUEBA))
         ->toThrow(RuntimeException::class);
+});
+
+it('el fallo de red con el ConnectException de Guzzle encadenado se traduce igual, sin el RUT', function () {
+    // Laravel encadena el `ConnectException` de Guzzle como `previous` de su
+    // `ConnectionException`, y ese es el camino real de un timeout en
+    // producción. Guzzle 8 eliminó `getHandlerContext()` —de donde salía el
+    // número de cURL—, así que leerlo a ciegas lanza un `Error` DENTRO de
+    // `MaestroNoDisponible::porExcepcion()`: el consumidor deja de recibir la
+    // excepción del dominio y le sube el fallo original, que lleva la URI con
+    // el RUT en el path. Es una fuga de dato personal al log, no solo un
+    // problema de tipos.
+    $uriConRut = 'http://personas-api:8000/api/servicios/v1/personas/'.RUT_DE_PRUEBA;
+
+    Http::fake([
+        '*/api/servicios/v1/personas/*' => fn () => throw new ConnectionException(
+            'cURL error 28: Operation timed out for '.$uriConRut,
+            0,
+            new ConnectException(
+                'cURL error 28: Operation timed out for '.$uriConRut,
+                new Request('GET', $uriConRut),
+            ),
+        ),
+    ]);
+
+    try {
+        (new ApiPersonaResolver)->findByRut(RUT_DE_PRUEBA);
+        $this->fail('Tenía que lanzar.');
+    } catch (Throwable $e) {
+        expect($e)->toBeInstanceOf(MaestroNoDisponible::class)
+            ->and(cadenaDeMensajes($e))->not->toContain('11111111')
+            ->and(cadenaDeMensajes($e))->not->toContain('personas-api');
+    }
 });

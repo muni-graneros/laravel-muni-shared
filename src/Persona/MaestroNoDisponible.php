@@ -66,11 +66,21 @@ final class MaestroNoDisponible extends \RuntimeException
      * El número de error de cURL, si el fallo original lo trae. Laravel envuelve
      * el `ConnectException` de Guzzle como `previous` de su
      * `ConnectionException`; acá se lee el número y se descarta el resto.
+     *
+     * Solo Guzzle 7 lo expone: Guzzle 8 eliminó `getHandlerContext()` y manda
+     * clasificar por clase de excepción (`ConnectTimeoutException`,
+     * `NetworkTimeoutException`, …), que es de donde sale el detalle cuando acá
+     * no hay número. Se consulta con `method_exists` en vez de fijar la versión
+     * porque el paquete corre en los 12 consumidores y cada uno resuelve la suya.
+     *
+     * No es cosmético: leer el método a ciegas lanza un `Error` dentro de
+     * `porExcepcion()`, el consumidor no recibe esta excepción y le sube la
+     * original —con la URI y el RUT adentro— al log.
      */
     private static function errnoDeCurl(\Throwable $e): ?int
     {
         for ($actual = $e; $actual !== null; $actual = $actual->getPrevious()) {
-            if ($actual instanceof ConnectException) {
+            if ($actual instanceof ConnectException && method_exists($actual, 'getHandlerContext')) {
                 $errno = $actual->getHandlerContext()['errno'] ?? null;
 
                 return is_int($errno) ? $errno : null;
