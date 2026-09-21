@@ -2,6 +2,8 @@
 
 namespace Muni\Shared\Persona;
 
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\Http;
 
 /**
@@ -15,27 +17,41 @@ use Illuminate\Support\Facades\Http;
  */
 class ApiPersonaResolver implements PersonaResolverInterface
 {
+    /**
+     * @throws MaestroNoDisponible si el maestro no respondió o respondió con
+     *                             error. Nunca deja escapar la excepción del
+     *                             cliente HTTP: lleva el RUT en la URI (ver el
+     *                             docblock de `MaestroNoDisponible`).
+     */
     public function findByRut(string $rut): ?PersonaDTO
     {
-        $resp = Http::withToken((string) config('services.personas_api.token'))
-            // El valor por omisión es «desconocido» y NO el nombre de un sistema
-            // real, que es lo que había antes («discapacidad»). Ese encabezado es
-            // lo que el maestro guarda en `persona_lookups` como origen de la
-            // consulta, así que un adoptante que olvidara configurarlo no quedaba
-            // sin trazar: quedaba trazado como OTRO sistema. Una bitácora que
-            // atribuye mal quién consultó los datos de un vecino es peor que una
-            // que dice «no se sabe», y la Ley 21.719 pide trazabilidad de los
-            // accesos, no una plausible.
-            ->withHeaders(['X-Sistema' => (string) config('services.personas_api.sistema', 'desconocido')])
-            ->acceptJson()
-            ->timeout((int) config('services.personas_api.timeout', 5))
-            ->get(rtrim((string) config('services.personas_api.url'), '/').'/api/servicios/v1/personas/'.urlencode($rut));
+        try {
+            $resp = Http::withToken((string) config('services.personas_api.token'))
+                // El valor por omisión es «desconocido» y NO el nombre de un sistema
+                // real, que es lo que había antes («discapacidad»). Ese encabezado es
+                // lo que el maestro guarda en `persona_lookups` como origen de la
+                // consulta, así que un adoptante que olvidara configurarlo no quedaba
+                // sin trazar: quedaba trazado como OTRO sistema. Una bitácora que
+                // atribuye mal quién consultó los datos de un vecino es peor que una
+                // que dice «no se sabe», y la Ley 21.719 pide trazabilidad de los
+                // accesos, no una plausible.
+                ->withHeaders(['X-Sistema' => (string) config('services.personas_api.sistema', 'desconocido')])
+                ->acceptJson()
+                ->timeout((int) config('services.personas_api.timeout', 5))
+                ->get(rtrim((string) config('services.personas_api.url'), '/').'/api/servicios/v1/personas/'.urlencode($rut));
+        } catch (ConnectionException $e) {
+            throw MaestroNoDisponible::porExcepcion($e);
+        }
 
         if ($resp->status() === 404) {
             return null;
         }
 
-        $data = $resp->throw()->json('data');
+        try {
+            $data = $resp->throw()->json('data');
+        } catch (RequestException $e) {
+            throw MaestroNoDisponible::porExcepcion($e);
+        }
 
         return PersonaDTO::fromArray($data + ['source' => 'api', 'system' => 'maestro']);
     }

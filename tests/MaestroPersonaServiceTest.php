@@ -1,6 +1,9 @@
 <?php
 
+use Illuminate\Http\Client\ConnectionException;
+use Illuminate\Log\Events\MessageLogged;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Log;
 use Muni\Shared\Persona\MaestroPersonaService;
 
 beforeEach(function () {
@@ -51,4 +54,31 @@ it('sin url/token configurados devuelve null sin llamar a la red', function () {
 
 it('un RUT sin dígitos devuelve null', function () {
     expect((new MaestroPersonaService('feria'))->buscar('---'))->toBeNull();
+});
+
+// ── PII en el log: el RUT no puede terminar en laravel.log ni en GlitchTip ──
+
+it('cuando el maestro no responde, lo que se loguea no lleva el RUT', function () {
+    // Guzzle arma el mensaje con la URI completa —y el RUT va en el path—.
+    // El `catch` de buscar() lo degradaba a null bien, pero escribía
+    // `$e->getMessage()` tal cual en el contexto del log.
+    Http::fake([
+        '*/api/servicios/v1/personas/*' => fn () => throw new ConnectionException(
+            'cURL error 28: Operation timed out after 5000 milliseconds with 0 bytes received '
+            .'for http://personas-api:8000/api/servicios/v1/personas/11111111-1',
+        ),
+    ]);
+
+    $registros = [];
+    Log::listen(function (MessageLogged $evento) use (&$registros): void {
+        $registros[] = $evento->level.' '.$evento->message.' '.json_encode($evento->context);
+    });
+
+    expect((new MaestroPersonaService('feria'))->buscar('11111111-1'))->toBeNull();
+
+    // Que sí se haya logueado algo: sin esto el test pasa en vacío.
+    expect($registros)->not->toBe([])
+        ->and(implode("\n", $registros))->not->toContain('11111111')
+        // Y que lo que queda siga sirviendo para operar: la clase del fallo.
+        ->and(implode("\n", $registros))->toContain('ConnectionException');
 });

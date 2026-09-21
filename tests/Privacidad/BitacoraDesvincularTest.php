@@ -6,6 +6,7 @@ use Illuminate\Support\Str;
 use Muni\Shared\Privacidad\ArchivoNoSuprimido;
 use Muni\Shared\Privacidad\BaseLicitud;
 use Muni\Shared\Privacidad\Bitacora;
+use Muni\Shared\Privacidad\CifradoCast;
 use Muni\Shared\Privacidad\Consentimientos;
 use Muni\Shared\Privacidad\Contratos\RegistroDeEvidencia;
 use Muni\Shared\Privacidad\DiscoEvidenciaNoConfigurado;
@@ -352,10 +353,13 @@ it('la evidencia de identidad se vacía y el método sobrevive, en cualquier mot
 
     app(Bitacora::class)->desvincular($this->titular);
 
+    // La columna va cifrada en reposo: se mira la fila cruda y se descifra
+    // acá, para seguir afirmando qué quedó ESCRITO y no qué devuelve el modelo.
     $fila = DB::table('privacidad_solicitudes')->where('id', $solicitud->getKey())->sole();
-    $verificacion = json_decode((string) $fila->verificacion_identidad, true);
+    $verificacion = json_decode((string) CifradoCast::descifrar($fila->verificacion_identidad), true);
 
-    expect($verificacion['metodo'])->toBe('cedula_presencial')
+    expect(CifradoCast::estaCifrado($fila->verificacion_identidad))->toBeTrue()
+        ->and($verificacion['metodo'])->toBe('cedula_presencial')
         ->and($verificacion['evidencia'])->toBe([])
         // Y no queda rastro del RUN en ninguna parte de la columna, que es lo
         // que se estaba comprando con toda esta maniobra.
@@ -380,7 +384,7 @@ it('la evidencia se vacía también en las claves que nadie declaró', function 
 
     $fila = DB::table('privacidad_solicitudes')->where('id', $solicitud->getKey())->sole();
 
-    expect(json_decode((string) $fila->verificacion_identidad, true))
+    expect(json_decode((string) CifradoCast::descifrar($fila->verificacion_identidad), true))
         ->toBe(['metodo' => 'clave_unica', 'evidencia' => []]);
 });
 
@@ -396,7 +400,8 @@ it('una verificación ilegible se reescribe purgada en vez de quedar intacta', f
     );
 
     // Por query builder, sin pasar por el cast del modelo: es la única forma de
-    // dejar la columna con contenido que el módulo no habría escrito.
+    // dejar la columna con contenido que el módulo no habría escrito. En claro,
+    // además, como lo dejaría una migración de datos anterior al cifrado.
     DB::table('privacidad_solicitudes')
         ->where('id', $solicitud->getKey())
         ->update(['verificacion_identidad' => '"11.111.111-1"']);
@@ -405,5 +410,7 @@ it('una verificación ilegible se reescribe purgada en vez de quedar intacta', f
 
     $fila = DB::table('privacidad_solicitudes')->where('id', $solicitud->getKey())->sole();
 
-    expect(json_decode((string) $fila->verificacion_identidad, true))->toBe(['evidencia' => []]);
+    expect(json_decode((string) CifradoCast::descifrar($fila->verificacion_identidad), true))->toBe(['evidencia' => []])
+        // Y lo reescrito ya va cifrado, aunque lo que había no lo estuviera.
+        ->and(CifradoCast::estaCifrado($fila->verificacion_identidad))->toBeTrue();
 });

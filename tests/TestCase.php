@@ -2,9 +2,12 @@
 
 namespace Muni\Shared\Tests;
 
+use Illuminate\Encryption\Encrypter;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Muni\Shared\MuniSharedServiceProvider;
 use Orchestra\Testbench\TestCase as Base;
+use Spatie\Activitylog\ActivitylogServiceProvider;
+use Spatie\Permission\PermissionServiceProvider;
 
 /**
  * Base de las pruebas del paquete.
@@ -23,7 +26,15 @@ abstract class TestCase extends Base
      */
     protected function getPackageProviders($app): array
     {
-        return [MuniSharedServiceProvider::class];
+        return [
+            MuniSharedServiceProvider::class,
+            // Ambos son dependencias opcionales del paquete (ver "suggest" en
+            // composer.json: RolePolicy y ActivityPolicy no las necesitan
+            // instaladas para autocargar, solo para probarlas). Acá SÍ están,
+            // como require-dev, porque este es el propio paquete probándose.
+            PermissionServiceProvider::class,
+            ActivitylogServiceProvider::class,
+        ];
     }
 
     /**
@@ -49,6 +60,12 @@ abstract class TestCase extends Base
 
     protected function defineEnvironment($app): void
     {
+        // El módulo de privacidad cifra el texto libre con la APP_KEY del
+        // sistema, y el esqueleto de Testbench no trae ninguna. Una clave por
+        // proceso alcanza: la base es en memoria y muere con él.
+        $app['config']->set('app.key', 'base64:'.base64_encode(Encrypter::generateKey('AES-256-CBC')));
+        $app['config']->set('app.cipher', 'AES-256-CBC');
+
         $app['config']->set('database.default', 'testing');
         $app['config']->set('database.connections.testing', self::hayMariaDb()
             ? [

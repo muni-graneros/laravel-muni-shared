@@ -242,7 +242,11 @@ class KeycloakSsoController
             return $esPopup ? $this->cerrarPopup($destino) : redirect()->to($destino);
         }
 
-        Auth::login($user, remember: true);
+        // Sin «recordar»: los sistemas del ecosistema descartan esa cookie
+        // antes de que el guard llegue a verla (IgnorarCookieDeRecordar), así
+        // que emitirla solo dejaba en el navegador de cada funcionario un
+        // testigo de catorce meses que nadie va a honrar.
+        Auth::login($user);
 
         // El SSO ya autenticó al funcionario: se marca el MFA local como cumplido
         // (el segundo factor pasará a vivir en el IdP — fase 3 de docs/SSO.md).

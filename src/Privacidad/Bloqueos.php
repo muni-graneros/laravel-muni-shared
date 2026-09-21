@@ -180,7 +180,11 @@ class Bloqueos
                 ->vigentes()
                 ->update([
                     'levantado_en' => now(),
-                    'levantado_motivo' => $motivo,
+                    // Un update() sobre el builder no pasa por los casts del
+                    // modelo: se cifra a mano, con el mismo cast que lee la
+                    // columna. Sin esto el motivo quedaba en claro con el cast
+                    // declarado y la suite en verde.
+                    'levantado_motivo' => CifradoCast::cifrar($motivo),
                     'user_levanta_id' => Auth::id(),
                 ]);
 
@@ -271,7 +275,9 @@ class Bloqueos
             $afectados = Bloqueo::query()
                 ->where('solicitud_id', $solicitud->getKey())
                 ->vigentes()
-                ->update(['motivo' => $motivo]);
+                // Cifrado a mano por lo mismo que en levantar(): el update()
+                // masivo no pasa por los casts.
+                ->update(['motivo' => CifradoCast::cifrar($motivo)]);
 
             $titular = $solicitud->titular;
 
@@ -401,12 +407,21 @@ class Bloqueos
             ->all();
     }
 
-    /** @return Builder<Bloqueo> */
+    /**
+     * `titular_id` es varchar(64) (admite RUT, UUID o un id numérico). Ligar
+     * `getKey()` tal cual —un `int` de PHP para un titular con clave
+     * autoincremental— hace que MariaDB compare la columna como número: no
+     * puede usar el índice `(titular_type, titular_id, levantado_en)` por la
+     * segunda columna y termina barriendo todas las filas de ese
+     * `titular_type`. Ligado como string entra por el índice completo.
+     *
+     * @return Builder<Bloqueo>
+     */
     private function deEsteTitular(Model $titular)
     {
         return Bloqueo::query()
             ->where('titular_type', $titular->getMorphClass())
-            ->where('titular_id', $titular->getKey())
+            ->where('titular_id', (string) $titular->getKey())
             ->vigentes();
     }
 }

@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\MorphTo;
 use Illuminate\Support\Carbon;
 use Muni\Shared\Privacidad\Ciclo\PlazoLegal;
+use Muni\Shared\Privacidad\CifradoCast;
 use Muni\Shared\Privacidad\EstadoDeSolicitud;
 use Muni\Shared\Privacidad\Solicitante;
 use Muni\Shared\Privacidad\TipoDeSolicitud;
@@ -25,9 +26,13 @@ use Muni\Shared\Privacidad\TipoDeSolicitud;
  * @property Carbon $recibida_en
  * @property Carbon $vence_en
  * @property Carbon|null $resuelta_en
- * @property string $detalle
- * @property string|null $fundamento_resolucion
- * @property array<string, mixed> $verificacion_identidad
+ * @property string $detalle prosa dictada por el ciudadano; cifrada en la
+ *                           base (ver CifradoCast)
+ * @property string|null $fundamento_resolucion la respuesta escrita al
+ *                                              titular; cifrada en la base
+ * @property array<string, mixed> $verificacion_identidad cifrada en la base:
+ *                                                        `evidencia` guarda el
+ *                                                        RUN en claro
  * @property Solicitante $solicitante
  * @property string|null $acreditacion_path ruta del documento que acredita la
  *                                          representación; null cuando actúa
@@ -49,7 +54,18 @@ class Solicitud extends Model
         'recibida_en' => 'datetime',
         'vence_en' => 'datetime',
         'resuelta_en' => 'datetime',
-        'verificacion_identidad' => 'array',
+        // El texto libre va cifrado en reposo: `detalle` es lo que dicta el
+        // ciudadano (su RUT, su dirección, en discapacidad un diagnóstico),
+        // `verificacion_identidad.evidencia` es el RUN con que se acreditó y
+        // `fundamento_resolucion` es la respuesta al titular. Las tres tablas
+        // las comparten los ocho sistemas.
+        //
+        // Ojo con los `update()` masivos (`Solicitud::query()->update()`): no
+        // pasan por los casts. En este modelo hoy no hay ninguno; si aparece,
+        // va con `CifradoCast::cifrar()` como en `Bloqueos`.
+        'detalle' => CifradoCast::class,
+        'fundamento_resolucion' => CifradoCast::class,
+        'verificacion_identidad' => CifradoCast::class.':array',
         'solicitante' => Solicitante::class,
     ];
 
