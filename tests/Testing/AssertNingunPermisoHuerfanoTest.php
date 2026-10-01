@@ -63,3 +63,8 @@ it('se puede acotar a un guard', function () {
     expect(fn () => $this->assertNingunPermisoHuerfano(guard: 'api'))
         ->toThrow(ExpectationFailedException::class, 'solo_api');
 });
+
+it('un guard sin permisos (p. ej. mal escrito) falla en vez de pasar en vacío', function () {
+    expect(fn () => $this->assertNingunPermisoHuerfano(guard: 'wbe'))
+        ->toThrow(ExpectationFailedException::class, 'seeder');
+});
