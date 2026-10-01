@@ -24,6 +24,11 @@ Versionado: [SemVer](https://semver.org/lang/es/).
   descompresión), UNA decodificación y UNA recodificación sin EXIF, sha256 del binario
   resultante, y `decodificacionesHechas()`/`reiniciarContador()` para medirlo en tests.
   Requiere `ext-gd` y `ext-fileinfo` (en `suggest`).
+- `Testing\AssertNingunPermisoHuerfano` (trait; `assertNingunPermisoHuerfano(array $excepciones = [],
+  ?string $guard = null)`) sobre `Seguridad\PermisosHuerfanos::problemas()`: falla si existe un
+  permiso de spatie/Shield que ningún rol recibe (caso real: el permiso del widget ARCOP «por
+  vencer»). Las excepciones son explícitas y también se custodian (una que ya no existe o que
+  ya recibe un rol falla); sin permisos en la base falla en vez de pasar en vacío.
 
 ## [1.21.0] - 2026-09-07
 
