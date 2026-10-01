@@ -1,5 +1,15 @@
 <?php
 
+use Muni\Shared\Support\VariableDeEntorno;
+
+/*
+ * Las claves con valor por omisión se leen con VariableDeEntorno y no con el
+ * segundo argumento de env(): ese default sólo aplica cuando la variable está
+ * AUSENTE, y una variable DEFINIDA PERO VACÍA (`PRIVACIDAD_PLAZO_RESPUESTA_DIAS=`
+ * en un compose con placeholder sin rellenar) devolvía '' —0 días, o «no
+ * bloquear»— sin que nadie lo pidiera. Vacío o en blanco vale como ausente;
+ * sólo un valor explícito manda.
+ */
 return [
     // Identifica al sistema dentro del RAT compartido del ecosistema.
     //
@@ -11,12 +21,12 @@ return [
 
     // Plazo legal de respuesta a una solicitud ARCOP. Configurable porque debe
     // confirmarse contra el texto vigente y su reglamento antes de producción.
-    'plazo_respuesta_dias' => (int) env('PRIVACIDAD_PLAZO_RESPUESTA_DIAS', 30),
+    'plazo_respuesta_dias' => VariableDeEntorno::entero(env('PRIVACIDAD_PLAZO_RESPUESTA_DIAS'), 30),
 
     // Plazo para notificar una brecha a la Agencia. Configurable porque debe
     // confirmarse contra el texto vigente y su reglamento antes de producción,
     // igual que el plazo de respuesta a las solicitudes.
-    'plazo_notificacion_brecha_dias' => (int) env('PRIVACIDAD_PLAZO_NOTIFICACION_BRECHA_DIAS', 3),
+    'plazo_notificacion_brecha_dias' => VariableDeEntorno::entero(env('PRIVACIDAD_PLAZO_NOTIFICACION_BRECHA_DIAS'), 3),
 
     // Disco donde el SISTEMA ADOPTANTE guarda los documentos cuyas rutas el
     // módulo almacena: `privacidad_solicitudes.respuesta_path` (la respuesta
@@ -88,8 +98,9 @@ return [
 
     // Registrar una rectificación u oposición suspende el tratamiento hasta
     // resolverla. Configurable porque frena la operación del mesón: revisarlo
-    // con la jefatura antes de producción.
-    'bloquear_durante_solicitud' => (bool) env('PRIVACIDAD_BLOQUEAR_DURANTE_SOLICITUD', true),
+    // con la jefatura antes de producción. Vacía NO lo apaga (`(bool) ''` era
+    // false): sólo un valor explícito (false, 0, off, no).
+    'bloquear_durante_solicitud' => VariableDeEntorno::interruptor(env('PRIVACIDAD_BLOQUEAR_DURANTE_SOLICITUD'), true),
 
     'retencion' => [
         // Hora diaria a la que corre `privacidad:aplicar-retencion --ejecutar`,
@@ -114,13 +125,16 @@ return [
         // corrida. No es afinamiento: es lo que hace que una corrida
         // interrumpida deje evidencia de lo que alcanzó a hacer. La corrida real
         // murió por timeout con 10.131 personas anonimizadas y cero constancias.
-        'lote' => (int) env('PRIVACIDAD_RETENCION_LOTE', 100),
+        'lote' => VariableDeEntorno::entero(env('PRIVACIDAD_RETENCION_LOTE'), 100),
 
         // Vigencia del candado que impide dos corridas simultáneas. Tiene que
         // ser mayor que la corrida más larga esperable: la real iba a ~17
         // personas por segundo. Se suelta igual al terminar; esto es el techo
-        // para el caso en que el proceso muera sin soltarlo.
-        'candado_segundos' => (int) env('PRIVACIDAD_RETENCION_CANDADO_SEGUNDOS', 21600),
+        // para el caso en que el proceso muera sin soltarlo. Vacía no vale 0:
+        // un candado de 0 s en Laravel no vence nunca (RedisLock/CacheLock sólo
+        // ponen expiración con `seconds > 0`) y una corrida muerta dejaría la
+        // retención parada para siempre.
+        'candado_segundos' => VariableDeEntorno::entero(env('PRIVACIDAD_RETENCION_CANDADO_SEGUNDOS'), 21600),
     ],
 
     // Datos del responsable del tratamiento, que van en el RAT y en las
