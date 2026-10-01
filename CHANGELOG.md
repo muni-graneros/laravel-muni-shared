@@ -17,6 +17,13 @@ Versionado: [SemVer](https://semver.org/lang/es/).
   consigue); 422 si la clave no es UUID. Config publicable `idempotencia-config`
   (`idempotencia.ttl`, `.prefijo`, `.espera_del_lock`, `.vida_del_lock`). Opt-in: no
   cambia nada si no se usa.
+- `Imagen\DecodificadorAcotado::preparar($binario, $maximoPixeles, $maximoBytes)` →
+  `Imagen\ImagenPreparada` (`binario`, `extension`, `mime`, `sha256`): para imágenes subidas
+  por terceros. Tope de bytes, MIME real por contenido (JPEG/PNG/WebP, nunca SVG),
+  `getimagesizefromstring` antes de GD con tope de megapíxeles por llamada (anti bomba de
+  descompresión), UNA decodificación y UNA recodificación sin EXIF, sha256 del binario
+  resultante, y `decodificacionesHechas()`/`reiniciarContador()` para medirlo en tests.
+  Requiere `ext-gd` y `ext-fileinfo` (en `suggest`).
 
 ## [1.21.0] - 2026-09-07
 
