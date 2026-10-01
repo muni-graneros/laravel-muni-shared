@@ -99,3 +99,44 @@ it('un archivo truncado falla limpio y no deja buffers de salida abiertos', func
         ->toThrow(InvalidArgumentException::class)
         ->and(ob_get_level())->toBe($nivel);
 });
+
+it('rechaza formatos que GD sí sabe leer pero no están en la lista (GIF, también animado, y BMP)', function (string $binario) {
+    // getimagesizefromstring() y GD aceptan estos formatos: lo único que los frena es
+    // la lista de tipos por contenido. Sin ella, un GIF animado entraría al pipeline.
+    expect(getimagesizefromstring($binario))->not->toBeFalse();
+
+    expect(fn () => DecodificadorAcotado::preparar($binario, 10_000))
+        ->toThrow(InvalidArgumentException::class, 'no es una imagen aceptada')
+        ->and(DecodificadorAcotado::decodificacionesHechas())->toBe(0);
+})->with([
+    'gif' => fn () => (function () {
+        ob_start();
+        imagegif(imagecreatetruecolor(10, 10));
+
+        return (string) ob_get_clean();
+    })(),
+    'gif animado' => fn () => "GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff"
+        ."\x21\xff\x0bNETSCAPE2.0\x03\x01\x00\x00\x00"
+        ."\x21\xf9\x04\x00\x0a\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x44\x01\x00"
+        ."\x21\xf9\x04\x00\x0a\x00\x00\x00\x2c\x00\x00\x00\x00\x01\x00\x01\x00\x00\x02\x02\x4c\x01\x00\x3b",
+    'bmp' => fn () => (function () {
+        ob_start();
+        imagebmp(imagecreatetruecolor(10, 10));
+
+        return (string) ob_get_clean();
+    })(),
+]);
+
+it('un PNG con chunks de texto (tEXt) sale sin ellos', function () {
+    $png = imagenDePrueba('png');
+    $datos = "Comment\0vecino-rut-12345678-5";
+    $chunk = pack('N', strlen($datos)).'tEXt'.$datos.pack('N', crc32('tEXt'.$datos));
+    // Tras la firma (8 bytes) y el IHDR (25 bytes).
+    $conTexto = substr($png, 0, 33).$chunk.substr($png, 33);
+    expect($conTexto)->toContain('vecino-rut');
+
+    $img = DecodificadorAcotado::preparar($conTexto, 10_000);
+
+    expect($img->binario)->not->toContain('vecino-rut')
+        ->and($img->extension)->toBe('png');
+});
