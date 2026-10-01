@@ -40,6 +40,7 @@ class MuniSharedServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/privacidad.php', 'privacidad');
         $this->mergeConfigFrom(__DIR__.'/../config/credenciales-de-plantilla.php', 'credenciales-de-plantilla');
         $this->mergeConfigFrom(__DIR__.'/../config/datos-operativos.php', 'datos-operativos');
+        $this->mergeConfigFrom(__DIR__.'/../config/idempotencia.php', 'idempotencia');
 
         // Enlace por defecto: un sistema que ya tenga su propia trazabilidad
         // puede sustituirlo sin tocar el módulo.
@@ -82,6 +83,10 @@ class MuniSharedServiceProvider extends ServiceProvider
             $this->publishes([
                 __DIR__.'/../config/datos-operativos.php' => config_path('datos-operativos.php'),
             ], 'datos-operativos-config');
+
+            $this->publishes([
+                __DIR__.'/../config/idempotencia.php' => config_path('idempotencia.php'),
+            ], 'idempotencia-config');
 
             $this->publishes([
                 __DIR__.'/../stubs/privacidad' => base_path('docs/privacidad'),

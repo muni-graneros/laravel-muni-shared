@@ -66,8 +66,10 @@ Todo cuelga de `Muni\Shared\`.
 | `helpers.php` | `asset_versionado()` global (con guarda `function_exists`) | — |
 | `Casts\` | `EncryptedSeguro`: cifrado en reposo que tolera filas heredadas en claro | — |
 | `Errores\` | `ReporteDeErrores`: las trazas no salen del país (Ley 21.719) | — |
-| `Seguridad\` | `CredencialesDePlantilla` (ver abajo), `PermisosBajoOctane`, `SegundoFactorEnProduccion` | — |
-| `Testing\` | `ContratoDeEnvExample` + `AssertEnvExampleCompleto`, `AssertPermisosNoSeQuedanPegados`, `AssertSegundoFactorNoSeRegala`. **PHPUnit puro, no Pest** | — |
+| `Seguridad\` | `CredencialesDePlantilla` (ver abajo), `PermisosBajoOctane`, `SegundoFactorEnProduccion`, `PermisosHuerfanos` | `PermisosHuerfanos`: spatie (`suggest`) |
+| `Testing\` | `ContratoDeEnvExample` + `AssertEnvExampleCompleto`, `AssertPermisosNoSeQuedanPegados`, `AssertSegundoFactorNoSeRegala`, `AssertNingunPermisoHuerfano` (todo permiso lo recibe algún rol; excepciones explícitas y custodiadas). **PHPUnit puro, no Pest** | — |
+| `Http\Middleware\` | `AccionIdempotente`: `Idempotency-Key` (UUID) en POST reintentables; aísla por usuario + método + ruta, lock por clave, no guarda errores. Config `idempotencia` | — |
+| `Imagen\` | `DecodificadorAcotado::preparar()` → `ImagenPreparada`: imagen subida por terceros con tope de bytes y de megapíxeles ANTES de GD, sólo JPEG/PNG/WebP por contenido, re-codificada sin metadatos, con sha256 del binario final | `ext-gd` (`suggest`) y `ext-fileinfo` |
 | `Persona\` | `PersonaDTO`, `PersonaResolverInterface`, `ApiPersonaResolver`, `MaestroPersonaService` (autocompletar por RUT contra el maestro), `WriteThrough\{SincronizarAlMaestro, Resincronizar, VerificarSincronizacion}` | — |
 | `Sso\` | `KeycloakSsoController` (OIDC Authorization Code contra la cuenta municipal) y `SsoClaims` | `firebase/php-jwt` |
 | `Correo\` | `TransporteGraph` (envío por Microsoft Graph) y `ConfiguracionDeCorreo` | — |
@@ -93,9 +95,9 @@ que el sistema escriba una línea:
 - **Carga las migraciones** del módulo Privacidad (`loadMigrationsFrom`, no se
   publican): actualizar el paquete propaga el esquema con un `migrate`, sin un
   paso por repo que alguien va a olvidar.
-- **Fusiona cuatro archivos de configuración**: el mailer `graph` dentro de
-  `mail.mailers.graph`, más `privacidad`, `credenciales-de-plantilla` y
-  `datos-operativos`. Ningún sistema toca su `config/mail.php`: alcanza con
+- **Fusiona cinco archivos de configuración**: el mailer `graph` dentro de
+  `mail.mailers.graph`, más `privacidad`, `credenciales-de-plantilla`,
+  `datos-operativos` e `idempotencia`. Ningún sistema toca su `config/mail.php`: alcanza con
   `MAIL_MAILER=graph` y las credenciales en el `.env`.
 - **Enlaza dos contratos por defecto**, sustituibles:
   `RegistroDeEvidencia → BitacoraEnBaseDeDatos` y
@@ -114,6 +116,7 @@ que el sistema escriba una línea:
 php artisan vendor:publish --tag=privacidad-config                 # config/privacidad.php
 php artisan vendor:publish --tag=credenciales-de-plantilla-config  # config/credenciales-de-plantilla.php
 php artisan vendor:publish --tag=datos-operativos-config           # config/datos-operativos.php
+php artisan vendor:publish --tag=idempotencia-config               # config/idempotencia.php
 php artisan vendor:publish --tag=privacidad-stubs                  # docs/privacidad/ del sistema
 ```
 
