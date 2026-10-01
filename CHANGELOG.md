@@ -9,7 +9,14 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
-_Nada todavía._
+### Añadido
+- `Http\Middleware\AccionIdempotente`: hace idempotente un POST reintentado por una cola
+  sin conexión. `Idempotency-Key` (UUID) opcional; guarda la primera respuesta 2xx JSON por
+  usuario + método + ruta + clave (24 h por defecto) y la repite con
+  `Idempotent-Replayed: true`; `Cache::lock` por clave (503 + `Retry-After` si no se
+  consigue); 422 si la clave no es UUID. Config publicable `idempotencia-config`
+  (`idempotencia.ttl`, `.prefijo`, `.espera_del_lock`, `.vida_del_lock`). Opt-in: no
+  cambia nada si no se usa.
 
 ## [1.21.0] - 2026-09-07
 
