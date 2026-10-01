@@ -11,10 +11,12 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ### Añadido
 - `Http\Middleware\AccionIdempotente`: hace idempotente un POST reintentado por una cola
-  sin conexión. `Idempotency-Key` (UUID) opcional; guarda la primera respuesta 2xx JSON por
-  usuario + método + ruta + clave (24 h por defecto) y la repite con
-  `Idempotent-Replayed: true`; `Cache::lock` por clave (503 + `Retry-After` si no se
-  consigue); 422 si la clave no es UUID. Config publicable `idempotencia-config`
+  sin conexión. `Idempotency-Key` (UUID) opcional; guarda la primera respuesta 2xx (JSON,
+  texto o 204, con su Content-Type; nunca streams ni archivos) por clase e id del usuario
+  (como texto: ids UUID no colisionan) + método + ruta + clave (24 h por defecto) y la
+  repite con `Idempotent-Replayed: true` y sin las demás cabeceras originales (cookies);
+  `Cache::lock` por clave (503 + `Retry-After` si no se consigue); 422 si la clave no es
+  UUID. `claveDeCache()`/`claveDeLock()` reciben el `Authenticatable`. Config publicable `idempotencia-config`
   (`idempotencia.ttl`, `.prefijo`, `.espera_del_lock`, `.vida_del_lock`). Opt-in: no
   cambia nada si no se usa.
 - `Imagen\DecodificadorAcotado::preparar($binario, $maximoPixeles, $maximoBytes)` →
