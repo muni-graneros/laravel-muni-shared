@@ -38,16 +38,19 @@ use Illuminate\Support\Facades\App;
 final class SegundoFactorEnProduccion
 {
     /**
-     * Pares de claves equivalentes: la del sistema suelto y la de muni-acceso.
+     * Claves equivalentes: la del sistema suelto, la de muni-acceso y la de
+     * laravel-muni-mfa (el MFA por correo unificado, `config/muni-mfa.php`).
+     * Sin la última, un sistema que adopta el paquete dejaba este candado mudo:
+     * su configuración ya no vive en `mfa.*`.
      *
      * @var list<string>
      */
-    private const INTERRUPTORES = ['mfa.enabled', 'acceso.mfa.activa'];
+    private const INTERRUPTORES = ['mfa.enabled', 'acceso.mfa.activa', 'muni-mfa.enabled'];
 
     /**
      * @var list<string>
      */
-    private const MUESTRAN_EL_CODIGO = ['mfa.show_code', 'acceso.mfa.mostrar_codigo'];
+    private const MUESTRAN_EL_CODIGO = ['mfa.show_code', 'acceso.mfa.mostrar_codigo', 'muni-mfa.show_code'];
 
     /**
      * Lo que hay que arreglar, en castellano. Lista vacía = nada que objetar.

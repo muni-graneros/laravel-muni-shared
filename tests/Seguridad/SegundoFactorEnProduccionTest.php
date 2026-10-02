@@ -42,21 +42,21 @@ it('no objeta nada con el segundo factor encendido y el código oculto', functio
     config()->set($prefijo, ['enabled' => true, 'activa' => true, 'show_code' => false, 'mostrar_codigo' => false]);
 
     expect(SegundoFactorEnProduccion::problemas())->toBe([]);
-})->with(['mfa', 'acceso.mfa']);
+})->with(['mfa', 'acceso.mfa', 'muni-mfa']);
 
 it('canta cuando el código se pinta en pantalla en producción', function (string $clave) {
     config()->set($clave, true);
 
     expect(SegundoFactorEnProduccion::problemas())->toHaveCount(1)
         ->and(SegundoFactorEnProduccion::problemas()[0])->toContain($clave);
-})->with(['mfa.show_code', 'acceso.mfa.mostrar_codigo']);
+})->with(['mfa.show_code', 'acceso.mfa.mostrar_codigo', 'muni-mfa.show_code']);
 
 it('canta cuando el interruptor del segundo factor quedó apagado en producción', function (string $clave) {
     config()->set($clave, false);
 
     expect(SegundoFactorEnProduccion::problemas())->toHaveCount(1)
         ->and(SegundoFactorEnProduccion::problemas()[0])->toContain($clave);
-})->with(['mfa.enabled', 'acceso.mfa.activa']);
+})->with(['mfa.enabled', 'acceso.mfa.activa', 'muni-mfa.enabled']);
 
 it('no exige segundo factor a un sistema que no declara ninguno', function () {
     config()->set('mfa', null);

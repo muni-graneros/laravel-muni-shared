@@ -9,6 +9,13 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+### Cambiado
+- `Seguridad\SegundoFactorEnProduccion` también mira `muni-mfa.enabled` y
+  `muni-mfa.show_code`, las claves de `laravel-muni-mfa`. Sin esto, un sistema
+  que adopta el paquete dejaba mudo `assertSegundoFactorNoSeRegala`: su
+  configuración ya no vive en `mfa.*`. Nada se rompe al subir: las claves
+  nuevas solo se miran si existen.
+
 ### Añadido
 - `Http\Middleware\AccionIdempotente`: hace idempotente un POST reintentado por una cola
   sin conexión. `Idempotency-Key` (UUID) opcional; guarda la primera respuesta 2xx (JSON,
