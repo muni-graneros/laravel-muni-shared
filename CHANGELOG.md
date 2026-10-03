@@ -10,6 +10,9 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 ## [Sin publicar]
 
 ### Cambiado
+- `Sso\KeycloakSsoController` marca `auth.two_factor_verified` con el id del usuario (string)
+  cuando el sistema tiene `laravel-muni-mfa` (`muni-mfa.enabled` definido); sin el paquete
+  sigue guardando `true`, así que los sistemas con middleware local no cambian.
 - `Seguridad\SegundoFactorEnProduccion` también mira `muni-mfa.enabled` y
   `muni-mfa.show_code`, las claves de `laravel-muni-mfa`. Sin esto, un sistema
   que adopta el paquete dejaba mudo `assertSegundoFactorNoSeRegala`: su
