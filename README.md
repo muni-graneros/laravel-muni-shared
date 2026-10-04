@@ -2,7 +2,7 @@
 
 Código compartido del **ecosistema municipal de Graneros**: lo que estaba
 copiado byte a byte en ocho sistemas y obligaba a arreglar cada defecto ocho
-veces. Versión publicada: **`v1.21.0`**.
+veces. Versión publicada: **`v1.22.0`**.
 
 Lo consumen hoy 12 repos: `web-graneros`, `licencias-graneros`,
 `seguridad-graneros`, `feria-graneros`, `discapacidad-graneros`,

@@ -20,6 +20,11 @@ Versionado: [SemVer](https://semver.org/lang/es/).
   (`Support\VariableDeEntorno`: `interruptor`, `entero`, `lista`). Sin migración ni comando: basta
   actualizar; quien tenga `config/privacidad.php` publicado (tag `privacidad-config`) debe copiar el cambio, porque su copia sigue con `env(X, default)`.
 
+## [1.22.0] - 2026-10-01
+
+Tres piezas nuevas, todas opt-in: no cambia nada si no se usan. No hay migración ni comando
+post-actualización; solo publicar `idempotencia-config` si se quiere cambiar los valores por defecto.
+
 ### Añadido
 - `Http\Middleware\AccionIdempotente`: hace idempotente un POST reintentado por una cola
   sin conexión. `Idempotency-Key` (UUID) opcional; guarda la primera respuesta 2xx (JSON,
