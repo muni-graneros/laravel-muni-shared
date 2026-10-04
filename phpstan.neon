@@ -94,15 +94,6 @@ parameters:
             paths:
                 - src/Privacidad/Textos.php
 
-        # Cosmético: el array que arma MuniDocsCommand siempre tiene el
-        # offset 1, así que el `??` nunca hace falta, pero documenta la forma
-        # sin depender de que nadie recuerde el índice. Archivo fuera del
-        # alcance de esta pasada.
-        -
-            identifier: nullCoalesce.offset
-            paths:
-                - src/Console/MuniDocsCommand.php
-
         # Los traits de aserto (`Assert*`) solo los usan los tests de cada
         # adoptante (tests/Feature/EnvExampleCompletoTest.php de cada sistema, y
         # el equivalente para los permisos bajo Octane): dentro de ESTE paquete
