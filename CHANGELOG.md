@@ -9,7 +9,44 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
-_Nada todavía._
+### Corregido
+- **Una variable de `config/privacidad.php` definida pero vacía ya no apaga el bloqueo ARCOP ni
+  deja plazos y candado en cero.** `env('X', $default)` solo aplica el default con la variable
+  AUSENTE; con `X=` (placeholder de compose sin rellenar, `.env` copiado del ejemplo) devolvía `''`:
+  `PRIVACIDAD_BLOQUEAR_DURANTE_SOLICITUD=` dejaba de suspender el tratamiento durante una
+  rectificación u oposición, los plazos de respuesta y de brecha valían 0 (toda solicitud nacía
+  vencida) y `PRIVACIDAD_RETENCION_CANDADO_SEGUNDOS=` dejaba un candado sin vencimiento que paraba
+  la retención para siempre tras una corrida muerta. Ahora vacío o en blanco vale como ausente
+  (`Support\VariableDeEntorno`: `interruptor`, `entero`, `lista`). Sin migración ni comando: basta
+  actualizar; quien tenga `config/privacidad.php` publicado (tag `privacidad-config`) debe copiar el cambio, porque su copia sigue con `env(X, default)`.
+
+## [1.22.0] - 2026-10-01
+
+Tres piezas nuevas, todas opt-in: no cambia nada si no se usan. No hay migración ni comando
+post-actualización; solo publicar `idempotencia-config` si se quiere cambiar los valores por defecto.
+
+### Añadido
+- `Http\Middleware\AccionIdempotente`: hace idempotente un POST reintentado por una cola
+  sin conexión. `Idempotency-Key` (UUID) opcional; guarda la primera respuesta 2xx (JSON,
+  texto o 204, con su Content-Type; nunca streams ni archivos) por clase e id del usuario
+  (como texto: ids UUID no colisionan) + método + ruta + clave (24 h por defecto) y la
+  repite con `Idempotent-Replayed: true` y sin las demás cabeceras originales (cookies);
+  `Cache::lock` por clave (503 + `Retry-After` si no se consigue); 422 si la clave no es
+  UUID. `claveDeCache()`/`claveDeLock()` reciben el `Authenticatable`. Config publicable `idempotencia-config`
+  (`idempotencia.ttl`, `.prefijo`, `.espera_del_lock`, `.vida_del_lock`). Opt-in: no
+  cambia nada si no se usa.
+- `Imagen\DecodificadorAcotado::preparar($binario, $maximoPixeles, $maximoBytes)` →
+  `Imagen\ImagenPreparada` (`binario`, `extension`, `mime`, `sha256`): para imágenes subidas
+  por terceros. Tope de bytes, MIME real por contenido (JPEG/PNG/WebP, nunca SVG),
+  `getimagesizefromstring` antes de GD con tope de megapíxeles por llamada (anti bomba de
+  descompresión), UNA decodificación y UNA recodificación sin EXIF, sha256 del binario
+  resultante, y `decodificacionesHechas()`/`reiniciarContador()` para medirlo en tests.
+  Requiere `ext-gd` y `ext-fileinfo` (en `suggest`).
+- `Testing\AssertNingunPermisoHuerfano` (trait; `assertNingunPermisoHuerfano(array $excepciones = [],
+  ?string $guard = null)`) sobre `Seguridad\PermisosHuerfanos::problemas()`: falla si existe un
+  permiso de spatie/Shield que ningún rol recibe (caso real: el permiso del widget ARCOP «por
+  vencer»). Las excepciones son explícitas y también se custodian (una que ya no existe o que
+  ya recibe un rol falla); sin permisos en la base falla en vez de pasar en vacío.
 
 ## [1.21.0] - 2026-09-07
 

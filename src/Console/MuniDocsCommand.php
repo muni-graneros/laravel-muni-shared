@@ -364,9 +364,9 @@ class MuniDocsCommand extends Command
 
         // Proyectos y dispositivos declarados
         preg_match_all("/name:\s*'([^']+)'/", $src, $mn);
-        $proyectos = array_values(array_filter($mn[1] ?? [], fn ($n) => $n !== 'setup'));
+        $proyectos = array_values(array_filter($mn[1], fn ($n) => $n !== 'setup'));
         preg_match_all("/devices\['([^']+)'\]/", $src, $md);
-        $dispositivos = array_values(array_unique($md[1] ?? []));
+        $dispositivos = array_values(array_unique($md[1]));
 
         $moviles = array_values(array_filter($dispositivos, fn ($d) => preg_match('/iPhone|Pixel|Galaxy|iPad|Android/i', $d)));
         $navegadores = array_values(array_filter($dispositivos, fn ($d) => preg_match('/Desktop|Chrome|Firefox|Safari|Edge/i', $d)));
