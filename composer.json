@@ -31,7 +31,7 @@
         "orchestra/testbench": "^9.0|^10.0|^11.0",
         "pestphp/pest": "^3.0|^4.0",
         "spatie/laravel-activitylog": "^4.12",
-        "spatie/laravel-permission": "^7.0"
+        "spatie/laravel-permission": "^7.0 || ^8.0"
     },
     "suggest": {
         "ext-gd": "Para Imagen\\DecodificadorAcotado (decodificar y re-codificar imágenes subidas sin EXIF). Con ext-fileinfo.",
