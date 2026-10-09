@@ -9,6 +9,10 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+### Seguridad
+
+- `filament/filament` (require-dev) con piso `^5.10` (antes `^5.0`): la suite del paquete se prueba contra la versión corregida de las cuatro advisories del 2026-10-08 (GHSA-6p72-cx74-63f5, GHSA-jpwg-8rw9-v3jj, GHSA-q2ph-j76w-c7qx y GHSA-9g92-9qj5-cqjc). No cambia lo que exige a quien lo instala: Filament sigue siendo opcional.
+
 ### Corregido
 - **Una variable de `config/privacidad.php` definida pero vacía ya no apaga el bloqueo ARCOP ni
   deja plazos y candado en cero.** `env('X', $default)` solo aplica el default con la variable
