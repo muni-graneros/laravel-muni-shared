@@ -4,6 +4,15 @@ on:
     branches: [main, develop]
   pull_request:
     branches: [main, develop]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+# Solo lectura: ningún job escribe en el repositorio.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Pint + PHPStan + Pest

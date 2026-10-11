@@ -58,6 +58,27 @@ it('canta cuando el interruptor del segundo factor quedó apagado en producción
         ->and(SegundoFactorEnProduccion::problemas()[0])->toContain($clave);
 })->with(['mfa.enabled', 'acceso.mfa.activa']);
 
+it('canta cuando el interruptor llega vacío o en texto apagado (MFA_ENABLED= sin valor) en producción', function (string $clave, mixed $apagado) {
+    config()->set($clave, $apagado);
+
+    expect(SegundoFactorEnProduccion::problemas())->toHaveCount(1)
+        ->and(SegundoFactorEnProduccion::problemas()[0])->toContain($clave);
+})->with(['mfa.enabled', 'acceso.mfa.activa'])
+    ->with(['cadena vacía' => '', 'cero en texto' => '0', 'false en texto' => 'false', 'basura' => 'quizas']);
+
+it('acepta el interruptor encendido aunque llegue como texto', function (mixed $encendido) {
+    config()->set('mfa.enabled', $encendido);
+
+    expect(SegundoFactorEnProduccion::problemas())->toBe([]);
+})->with(['true en texto' => 'true', 'uno en texto' => '1', 'entero' => 1]);
+
+it('canta cuando el código se regala con un «1» en texto', function () {
+    config()->set('mfa', ['enabled' => true, 'show_code' => '1']);
+
+    expect(SegundoFactorEnProduccion::problemas())->toHaveCount(1)
+        ->and(SegundoFactorEnProduccion::problemas()[0])->toContain('mfa.show_code');
+});
+
 it('no exige segundo factor a un sistema que no declara ninguno', function () {
     config()->set('mfa', null);
     config()->set('acceso', null);

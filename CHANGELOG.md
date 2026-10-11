@@ -9,11 +9,42 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+> La sección `[1.22.0]` de abajo está cerrada pero **la etiqueta `v1.22.0` no existe en el
+> remoto** (el último tag publicado es `v1.21.0`): para los consumidores, 1.22.0 todavía no
+> salió. Lo de esta sección va en la versión que se publique después (sugerido **1.23.0**,
+> tras empujar `v1.22.0` o junto con ella).
+
+### Qué se rompe al subir
+
+- **`conflict` con `filament/filament >=5.0 <5.10.1`.** Un sistema con Filament 5 anterior a
+  5.10.1 en su `composer.lock` no puede subir este paquete sin subir Filament en el mismo
+  `composer update` (`composer update filament/filament muni-graneros/laravel-muni-shared -W`).
+  Es a propósito: 5.0–5.9 tienen las cuatro advisories del 2026-10-08. Filament 3 y 4
+  (personas-graneros) y los sistemas sin Filament (atencionvecino) no se ven afectados.
+- **`SegundoFactorEnProduccion` es más estricto.** Con `APP_ENV=production`, `mfa.enabled` /
+  `acceso.mfa.activa` presentes con un valor que no sea verdadero (`MFA_ENABLED=` vacío, `"0"`,
+  `"false"`, basura) ahora cuentan como MFA apagada, y `mfa.show_code` en `"1"`/`"true"` como
+  código regalado. Antes solo el booleano `false`/`true` exacto lo hacía saltar: un `.env` con
+  `MFA_ENABLED=` dejaba la MFA apagada sin aviso. Si un sistema deja de arrancar o su
+  `assertSegundoFactorNoSeRegala()` se pone rojo tras subir, el `.env` de producción estaba mal.
+
+### CI
+
+- `permissions: contents: read` y `concurrency` en `ci.yml`.
+- Escaneo de secretos (gitleaks 8.30.1 verificado por checksum, árbol + historial) en
+  `secretos.yml`, con `.gitleaks.toml` para el único falso positivo (la URL del servicio de
+  personas en `ApiPersonaResolverTest`).
+
 ### Seguridad
 
 - `filament/filament` (require-dev) con piso `^5.10` (antes `^5.0`): la suite del paquete se prueba contra la versión corregida de las cuatro advisories del 2026-10-08 (GHSA-6p72-cx74-63f5, GHSA-jpwg-8rw9-v3jj, GHSA-q2ph-j76w-c7qx y GHSA-9g92-9qj5-cqjc). No cambia lo que exige a quien lo instala: Filament sigue siendo opcional.
 
 ### Corregido
+
+- `Assets::versionado()` (y `asset_versionado()`) vacía la caché de `stat` del archivo antes de
+  leer el `mtime`: bajo Octane un worker vive horas y un archivo reemplazado mientras estaba
+  vivo seguía saliendo con la versión vieja. En PHP 8.3 ni siquiera `touch()` la invalidaba
+  (la prueba `AssetVersionadoTest` fallaba en 8.3 y pasaba en 8.4+).
 - **Una variable de `config/privacidad.php` definida pero vacía ya no apaga el bloqueo ARCOP ni
   deja plazos y candado en cero.** `env('X', $default)` solo aplica el default con la variable
   AUSENTE; con `X=` (placeholder de compose sin rellenar, `.env` copiado del ejemplo) devolvía `''`:

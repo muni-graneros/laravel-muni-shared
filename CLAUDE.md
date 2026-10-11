@@ -1,7 +1,8 @@
 # CLAUDE.md — laravel-muni-shared
 
 **Entidad: Municipalidad de Graneros.** Paquete Composer privado
-`muni-graneros/laravel-muni-shared`, versión publicada **v1.22.0**.
+`muni-graneros/laravel-muni-shared`. Último tag publicado en el remoto: **v1.21.0**
+(la 1.22.0 está cerrada en el CHANGELOG pero su tag no se empujó).
 
 ## Qué es
 
