@@ -135,6 +135,20 @@ class KeycloakSsoController
         return redirect($this->realmUrl($this->publicBase($request)).'/auth?'.$params);
     }
 
+    /**
+     * Marca el MFA local como cumplido en la sesión.
+     *
+     * Con laravel-muni-mfa la marca es el id del usuario (string, comparado en estricto);
+     * los sistemas que aún tienen su middleware local esperan `true`.
+     */
+    protected function marcarSegundoFactor(Request $request): void
+    {
+        $request->session()->put(
+            'auth.two_factor_verified',
+            config()->has('muni-mfa.enabled') ? (string) Auth::id() : true,
+        );
+    }
+
     public function callback(Request $request): \Symfony\Component\HttpFoundation\Response
     {
         abort_unless(config('services.keycloak.enabled'), 404);
@@ -251,7 +265,7 @@ class KeycloakSsoController
         // El SSO ya autenticó al funcionario: se marca el MFA local como cumplido
         // (el segundo factor pasará a vivir en el IdP — fase 3 de docs/SSO.md).
         // Sin esto, disc/feria rebotarían al usuario a la pantalla de código OTP.
-        $request->session()->put('auth.two_factor_verified', true);
+        $this->marcarSegundoFactor($request);
 
         // Marca que ESTA sesión vino del SSO → al cerrar sesión (app o Filament)
         // se hace SINGLE LOGOUT (también en Keycloak), si no el auto-login volvería
