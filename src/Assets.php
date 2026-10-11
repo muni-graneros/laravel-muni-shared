@@ -22,12 +22,18 @@ use Illuminate\Support\Facades\File;
  *
  * La función global `asset_versionado()` —que es lo que escriben las
  * plantillas— vive en `src/helpers.php` y delega acá.
+ *
+ * Antes de leer el `mtime` se vacía la caché de `stat` de ESE archivo: PHP la
+ * guarda por proceso, y bajo Octane un worker vive horas. Sin vaciarla, un
+ * archivo reemplazado mientras el worker está vivo seguía saliendo con la
+ * versión vieja (y en PHP 8.3 ni siquiera `touch()` la invalida).
  */
 final class Assets
 {
     public static function versionado(string $ruta): string
     {
         $archivo = public_path($ruta);
+        clearstatcache(true, $archivo);
         $v = File::exists($archivo) ? (string) File::lastModified($archivo) : '1';
 
         return asset($ruta).'?v='.$v;
