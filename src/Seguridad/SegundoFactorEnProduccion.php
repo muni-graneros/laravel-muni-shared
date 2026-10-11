@@ -66,15 +66,23 @@ final class SegundoFactorEnProduccion
 
         foreach (self::INTERRUPTORES as $clave) {
             // `null` es «la clave no existe»: ese sistema no declara segundo
-            // factor y no hay nada que exigirle.
-            if (config($clave) !== null && config($clave) === false) {
+            // factor y no hay nada que exigirle. Presente pero no encendido
+            // cuenta como apagado: `false`, y también la cadena vacía de un
+            // `MFA_ENABLED=` sin valor o un «0» en texto, que antes pasaban
+            // la comparación estricta con `false` y dejaban la MFA apagada sin
+            // aviso.
+            $valor = config($clave);
+
+            if ($valor !== null && filter_var($valor, FILTER_VALIDATE_BOOL) !== true) {
                 $problemas[] = "«{$clave}» está apagado con APP_ENV=production: el panel, que muestra "
                     .'nombre, RUT y domicilio de cada vecino, queda detrás de una contraseña sola.';
             }
         }
 
         foreach (self::MUESTRAN_EL_CODIGO as $clave) {
-            if (config($clave) === true) {
+            // Mismo criterio al revés: `MFA_SHOW_CODE=1` llega como «1» en
+            // texto y también regala el código.
+            if (filter_var(config($clave), FILTER_VALIDATE_BOOL) === true) {
                 $problemas[] = "«{$clave}» está encendido con APP_ENV=production: el código del segundo "
                     .'factor se pinta en la propia pantalla de verificación y se escribe en los logs, '
                     .'así que cualquiera con usuario y contraseña lo ve. La MFA no protege nada.';
