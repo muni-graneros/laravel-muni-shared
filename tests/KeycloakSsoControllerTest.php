@@ -1,6 +1,8 @@
 <?php
 
+use Illuminate\Auth\GenericUser;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
 use Muni\Shared\Sso\KeycloakSsoController;
 
 /**
@@ -113,4 +115,44 @@ it('acepta el state legítimo', function () {
     };
 
     expect($controller->comparar('token-de-estado-largo', 'token-de-estado-largo'))->toBeTrue();
+});
+
+/**
+ * laravel-muni-mfa guarda el id del usuario verificado (string) y lo compara en
+ * estricto; los sistemas que aún tienen su middleware local esperan `true`.
+ */
+it('con laravel-muni-mfa instalado el SSO marca la sesión con el id del usuario como string', function () {
+    config(['muni-mfa.enabled' => false]);
+    Auth::setUser(new GenericUser(['id' => 42]));
+    $request = Request::create('http://localhost/auth/sso/callback');
+    $request->setLaravelSession(app('session.store'));
+
+    $controller = new class extends KeycloakSsoController
+    {
+        public function marcar(Request $request): void
+        {
+            $this->marcarSegundoFactor($request);
+        }
+    };
+    $controller->marcar($request);
+
+    expect($request->session()->get('auth.two_factor_verified'))->toBe('42');
+});
+
+it('sin laravel-muni-mfa el SSO sigue marcando la sesión con true', function () {
+    expect(config()->has('muni-mfa.enabled'))->toBeFalse();
+    Auth::setUser(new GenericUser(['id' => 42]));
+    $request = Request::create('http://localhost/auth/sso/callback');
+    $request->setLaravelSession(app('session.store'));
+
+    $controller = new class extends KeycloakSsoController
+    {
+        public function marcar(Request $request): void
+        {
+            $this->marcarSegundoFactor($request);
+        }
+    };
+    $controller->marcar($request);
+
+    expect($request->session()->get('auth.two_factor_verified'))->toBeTrue();
 });

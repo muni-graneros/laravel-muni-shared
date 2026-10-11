@@ -55,6 +55,17 @@ Versionado: [SemVer](https://semver.org/lang/es/).
   (`Support\VariableDeEntorno`: `interruptor`, `entero`, `lista`). Sin migración ni comando: basta
   actualizar; quien tenga `config/privacidad.php` publicado (tag `privacidad-config`) debe copiar el cambio, porque su copia sigue con `env(X, default)`.
 
+### Cambiado (MFA unificado: `laravel-muni-mfa`)
+
+- `Sso\KeycloakSsoController` marca `auth.two_factor_verified` con el id del usuario (string)
+  cuando el sistema tiene `laravel-muni-mfa` (`muni-mfa.enabled` definido); sin el paquete
+  sigue guardando `true`, así que los sistemas con middleware local no cambian.
+- `Seguridad\SegundoFactorEnProduccion` también mira `muni-mfa.enabled` y
+  `muni-mfa.show_code`, las claves de `laravel-muni-mfa`. Sin esto, un sistema
+  que adopta el paquete dejaba mudo `assertSegundoFactorNoSeRegala`: su
+  configuración ya no vive en `mfa.*`. Nada se rompe al subir: las claves
+  nuevas solo se miran si existen.
+
 ## [1.22.0] - 2026-10-01
 
 Tres piezas nuevas, todas opt-in: no cambia nada si no se usan. No hay migración ni comando
