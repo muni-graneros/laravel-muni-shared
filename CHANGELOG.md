@@ -9,10 +9,16 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
-> La sección `[1.22.0]` de abajo está cerrada pero **la etiqueta `v1.22.0` no existe en el
-> remoto** (el último tag publicado es `v1.21.0`): para los consumidores, 1.22.0 todavía no
-> salió. Lo de esta sección va en la versión que se publique después (sugerido **1.23.0**,
-> tras empujar `v1.22.0` o junto con ella).
+## [1.23.0] - 2026-10-16
+
+Pone número de versión a lo que `control-acceso-graneros`, `discapacidad-graneros`,
+`web-graneros` y `rrhh-graneros` instalaban desde la rama `feature/segundo-factor-muni-mfa`
+(`"dev-feature/segundo-factor-muni-mfa as 1.22.0"`) para adoptar `laravel-muni-mfa`: que el
+candado de producción y el SSO reconozcan ese paquete. Producción no debe colgar de una rama,
+y una versión `dev-*` tampoco pasa la guarda de `laravel-muni-candados` 0.6.x
+(`GuardaDeCredencialesDePlantilla::laGuardaEstaInstalada()` compara con `version_compare` la
+versión instalada de este paquete). Esos cuatro sistemas tienen que pasar a `"^1.23"`. Entra
+también lo acumulado en `develop` desde 1.22.0. Sin migraciones ni configuración nueva.
 
 ### Qué se rompe al subir
 
@@ -21,39 +27,16 @@ Versionado: [SemVer](https://semver.org/lang/es/).
   `composer update` (`composer update filament/filament muni-graneros/laravel-muni-shared -W`).
   Es a propósito: 5.0–5.9 tienen las cuatro advisories del 2026-10-08. Filament 3 y 4
   (personas-graneros) y los sistemas sin Filament (atencionvecino) no se ven afectados.
+  La rama `feature/segundo-factor-muni-mfa` no traía este `conflict`: un sistema que la usaba
+  con Filament anterior a 5.10.1 sube los dos en el mismo comando. Con `^1.21` y Filament
+  viejo, `composer update muni-graneros/laravel-muni-shared` sin `-W` no da error, pero
+  instala la 1.22.1 en vez de la 1.23.0.
 - **`SegundoFactorEnProduccion` es más estricto.** Con `APP_ENV=production`, `mfa.enabled` /
   `acceso.mfa.activa` presentes con un valor que no sea verdadero (`MFA_ENABLED=` vacío, `"0"`,
   `"false"`, basura) ahora cuentan como MFA apagada, y `mfa.show_code` en `"1"`/`"true"` como
   código regalado. Antes solo el booleano `false`/`true` exacto lo hacía saltar: un `.env` con
   `MFA_ENABLED=` dejaba la MFA apagada sin aviso. Si un sistema deja de arrancar o su
   `assertSegundoFactorNoSeRegala()` se pone rojo tras subir, el `.env` de producción estaba mal.
-
-### CI
-
-- `permissions: contents: read` y `concurrency` en `ci.yml`.
-- Escaneo de secretos (gitleaks 8.30.1 verificado por checksum, árbol + historial) en
-  `secretos.yml`, con `.gitleaks.toml` para el único falso positivo (la URL del servicio de
-  personas en `ApiPersonaResolverTest`).
-
-### Seguridad
-
-- `filament/filament` (require-dev) con piso `^5.10` (antes `^5.0`): la suite del paquete se prueba contra la versión corregida de las cuatro advisories del 2026-10-08 (GHSA-6p72-cx74-63f5, GHSA-jpwg-8rw9-v3jj, GHSA-q2ph-j76w-c7qx y GHSA-9g92-9qj5-cqjc). No cambia lo que exige a quien lo instala: Filament sigue siendo opcional.
-
-### Corregido
-
-- `Assets::versionado()` (y `asset_versionado()`) vacía la caché de `stat` del archivo antes de
-  leer el `mtime`: bajo Octane un worker vive horas y un archivo reemplazado mientras estaba
-  vivo seguía saliendo con la versión vieja. En PHP 8.3 ni siquiera `touch()` la invalidaba
-  (la prueba `AssetVersionadoTest` fallaba en 8.3 y pasaba en 8.4+).
-- **Una variable de `config/privacidad.php` definida pero vacía ya no apaga el bloqueo ARCOP ni
-  deja plazos y candado en cero.** `env('X', $default)` solo aplica el default con la variable
-  AUSENTE; con `X=` (placeholder de compose sin rellenar, `.env` copiado del ejemplo) devolvía `''`:
-  `PRIVACIDAD_BLOQUEAR_DURANTE_SOLICITUD=` dejaba de suspender el tratamiento durante una
-  rectificación u oposición, los plazos de respuesta y de brecha valían 0 (toda solicitud nacía
-  vencida) y `PRIVACIDAD_RETENCION_CANDADO_SEGUNDOS=` dejaba un candado sin vencimiento que paraba
-  la retención para siempre tras una corrida muerta. Ahora vacío o en blanco vale como ausente
-  (`Support\VariableDeEntorno`: `interruptor`, `entero`, `lista`). Sin migración ni comando: basta
-  actualizar; quien tenga `config/privacidad.php` publicado (tag `privacidad-config`) debe copiar el cambio, porque su copia sigue con `env(X, default)`.
 
 ### Cambiado (MFA unificado: `laravel-muni-mfa`)
 
@@ -65,6 +48,39 @@ Versionado: [SemVer](https://semver.org/lang/es/).
   que adopta el paquete dejaba mudo `assertSegundoFactorNoSeRegala`: su
   configuración ya no vive en `mfa.*`. Nada se rompe al subir: las claves
   nuevas solo se miran si existen.
+
+### Seguridad
+
+- `filament/filament` (require-dev) con piso `^5.10` (antes `^5.0`): la suite del paquete se prueba contra la versión corregida de las cuatro advisories del 2026-10-08 (GHSA-6p72-cx74-63f5, GHSA-jpwg-8rw9-v3jj, GHSA-q2ph-j76w-c7qx y GHSA-9g92-9qj5-cqjc). No cambia lo que exige a quien lo instala: Filament sigue siendo opcional.
+
+### Corregido
+
+- `Assets::versionado()` (y `asset_versionado()`) vacía la caché de `stat` del archivo antes de
+  leer el `mtime`: bajo Octane un worker vive horas y un archivo reemplazado mientras estaba
+  vivo seguía saliendo con la versión vieja. En PHP 8.3 ni siquiera `touch()` la invalidaba
+  (la prueba `AssetVersionadoTest` fallaba en 8.3 y pasaba en 8.4+).
+
+### CI
+
+- `permissions: contents: read` y `concurrency` en `ci.yml`.
+- Escaneo de secretos (gitleaks 8.30.1 verificado por checksum, árbol + historial) en
+  `secretos.yml`, con `.gitleaks.toml` para el único falso positivo (la URL del servicio de
+  personas en `ApiPersonaResolverTest`).
+- Dependabot: menores y parches de Composer en un solo PR (las mayores, sueltas) y todas las
+  actions en otro. `actions/checkout` pasa a v7 y `spatie/laravel-permission` (require-dev)
+  admite `^7.0 || ^8.0`. Nada de esto le llega a quien instala el paquete.
+
+## [1.22.1] - 2026-10-13
+
+Para quien instala el paquete es igual a 1.22.0: solo cambia su entorno de desarrollo. Se
+publicó desde la rama `fix/filament-cve-2026-104181`, encima de `v1.22.0`, sin pasar por
+`develop` ni por `main`; esta entrada se escribió al cerrar la 1.23.0.
+
+### Seguridad
+
+- `filament/filament` (require-dev) con piso `^5.10.1` (CVE-2026-104181 y las cuatro
+  advisories del 2026-10-08). Desde 1.23.0 lo cubre el `conflict` con
+  `filament/filament >=5.0 <5.10.1`, que sí alcanza a quien instala el paquete.
 
 ## [1.22.0] - 2026-10-01
 
@@ -93,6 +109,18 @@ post-actualización; solo publicar `idempotencia-config` si se quiere cambiar lo
   permiso de spatie/Shield que ningún rol recibe (caso real: el permiso del widget ARCOP «por
   vencer»). Las excepciones son explícitas y también se custodian (una que ya no existe o que
   ya recibe un rol falla); sin permisos en la base falla en vez de pasar en vacío.
+
+### Corregido
+- **Una variable de `config/privacidad.php` definida pero vacía ya no apaga el bloqueo ARCOP ni
+  deja plazos y candado en cero.** `env('X', $default)` solo aplica el default con la variable
+  AUSENTE; con `X=` (placeholder de compose sin rellenar, `.env` copiado del ejemplo) devolvía `''`:
+  `PRIVACIDAD_BLOQUEAR_DURANTE_SOLICITUD=` dejaba de suspender el tratamiento durante una
+  rectificación u oposición, los plazos de respuesta y de brecha valían 0 (toda solicitud nacía
+  vencida) y `PRIVACIDAD_RETENCION_CANDADO_SEGUNDOS=` dejaba un candado sin vencimiento que paraba
+  la retención para siempre tras una corrida muerta. Ahora vacío o en blanco vale como ausente
+  (`Support\VariableDeEntorno`: `interruptor`, `entero`, `lista`). Sin migración ni comando: basta
+  actualizar; quien tenga `config/privacidad.php` publicado (tag `privacidad-config`) debe copiar el cambio, porque su copia sigue con `env(X, default)`.
+  Salió en el tag `v1.22.0`, aunque el CHANGELOG de ese tag la dejaba en «Sin publicar».
 
 ## [1.21.0] - 2026-09-07
 
