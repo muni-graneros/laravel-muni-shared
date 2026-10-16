@@ -42,21 +42,42 @@ it('no objeta nada con el segundo factor encendido y el código oculto', functio
     config()->set($prefijo, ['enabled' => true, 'activa' => true, 'show_code' => false, 'mostrar_codigo' => false]);
 
     expect(SegundoFactorEnProduccion::problemas())->toBe([]);
-})->with(['mfa', 'acceso.mfa']);
+})->with(['mfa', 'acceso.mfa', 'muni-mfa']);
 
 it('canta cuando el código se pinta en pantalla en producción', function (string $clave) {
     config()->set($clave, true);
 
     expect(SegundoFactorEnProduccion::problemas())->toHaveCount(1)
         ->and(SegundoFactorEnProduccion::problemas()[0])->toContain($clave);
-})->with(['mfa.show_code', 'acceso.mfa.mostrar_codigo']);
+})->with(['mfa.show_code', 'acceso.mfa.mostrar_codigo', 'muni-mfa.show_code']);
 
 it('canta cuando el interruptor del segundo factor quedó apagado en producción', function (string $clave) {
     config()->set($clave, false);
 
     expect(SegundoFactorEnProduccion::problemas())->toHaveCount(1)
         ->and(SegundoFactorEnProduccion::problemas()[0])->toContain($clave);
-})->with(['mfa.enabled', 'acceso.mfa.activa']);
+})->with(['mfa.enabled', 'acceso.mfa.activa', 'muni-mfa.enabled']);
+
+it('canta cuando el interruptor llega vacío o en texto apagado (MFA_ENABLED= sin valor) en producción', function (string $clave, mixed $apagado) {
+    config()->set($clave, $apagado);
+
+    expect(SegundoFactorEnProduccion::problemas())->toHaveCount(1)
+        ->and(SegundoFactorEnProduccion::problemas()[0])->toContain($clave);
+})->with(['mfa.enabled', 'acceso.mfa.activa'])
+    ->with(['cadena vacía' => '', 'cero en texto' => '0', 'false en texto' => 'false', 'basura' => 'quizas']);
+
+it('acepta el interruptor encendido aunque llegue como texto', function (mixed $encendido) {
+    config()->set('mfa.enabled', $encendido);
+
+    expect(SegundoFactorEnProduccion::problemas())->toBe([]);
+})->with(['true en texto' => 'true', 'uno en texto' => '1', 'entero' => 1]);
+
+it('canta cuando el código se regala con un «1» en texto', function () {
+    config()->set('mfa', ['enabled' => true, 'show_code' => '1']);
+
+    expect(SegundoFactorEnProduccion::problemas())->toHaveCount(1)
+        ->and(SegundoFactorEnProduccion::problemas()[0])->toContain('mfa.show_code');
+});
 
 it('no exige segundo factor a un sistema que no declara ninguno', function () {
     config()->set('mfa', null);

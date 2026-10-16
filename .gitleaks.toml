@@ -1,0 +1,8 @@
+# Excepciones de gitleaks para este repositorio. Cada una dice por qué no es un secreto.
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "URL del servicio de personas en las pruebas: la regla generic-api-key lee «api/…/personas/» seguido de un RUT de prueba como si fuera una clave"
+regexTarget = "line"
+regexes = ['''http://personas-api:8000/api/servicios/v1/personas/'\.RUT_DE_PRUEBA''']
