@@ -188,12 +188,10 @@ class KeycloakSsoController
             'redirect_uri' => $request->session()->pull('sso_redirect') ?: $this->redirectUri($request),
         ])->throw()->json();
 
-        // Las claims (email/nombre) se leen del id_token. Se VERIFICA su firma contra
-        // el JWKS del realm; si el JWKS no está disponible se cae a decodificar sin
-        // firma (el token igual llegó server-to-server por HTTPS desde el token
-        // endpoint, así que sigue siendo confiable). Defensa en profundidad.
-        $info = $this->verificarFirmaJwt($token['id_token'] ?? '')
-            ?? $this->claimsDeIdToken($token['id_token'] ?? '');
+        // Las claims (email/nombre) se leen del id_token, y su FIRMA se verifica
+        // contra el JWKS del realm. Si la firma no se puede verificar, el login se
+        // CORTA: un id_token sin firma probada no acredita quién es el funcionario.
+        $info = $this->claimsDelIdToken((string) ($token['id_token'] ?? ''));
 
         $email = $info['email'] ?? null;
         abort_unless(is_string($email) && $email !== '', 422, 'La cuenta municipal no entregó un correo.');
@@ -376,8 +374,40 @@ class KeycloakSsoController
     }
 
     /**
-     * Decodifica el payload de un JWT (id_token) sin verificar firma. Seguro aquí
-     * porque el token llega directo del token endpoint por una llamada del servidor.
+     * Claims del id_token, con la FIRMA verificada contra el JWKS del realm.
+     *
+     * Si la firma no se puede verificar, el login NO continúa. Caer a "decodificar
+     * sin firma" convertía un fallo de verificación —el JWKS caído, la llave rotada,
+     * o un id_token manipulado— en un login ACEPTADO, justo en la ventana en que
+     * alguien intentaría colarse. OIDC (Core 3.1.3.7) manda lo contrario: si la
+     * firma no valida, el id_token no se acepta.
+     *
+     * El opt-in `services.keycloak.permitir_id_token_sin_firma` deja el
+     * comportamiento anterior para quien lo pida a propósito —un IdP caído del que
+     * hay que salir como sea—. Apagado por defecto.
+     *
+     * @return array<string,mixed>
+     */
+    protected function claimsDelIdToken(string $idToken): array
+    {
+        $verificadas = $this->verificarFirmaJwt($idToken);
+
+        if ($verificadas !== null) {
+            return $verificadas;
+        }
+
+        if (! (bool) config('services.keycloak.permitir_id_token_sin_firma', false)) {
+            abort(503, 'No se pudo verificar la firma de la cuenta municipal. Intenta de nuevo en un momento.');
+        }
+
+        return $this->claimsDeIdToken($idToken);
+    }
+
+    /**
+     * Decodifica el payload de un JWT (id_token) sin verificar firma.
+     *
+     * SOLO para el opt-in explícito de arriba. Fuera de ese caso, un id_token sin
+     * firma probada no acredita nada.
      *
      * @return array<string,mixed>
      */
@@ -401,6 +431,29 @@ class KeycloakSsoController
      * @return array<string,mixed>|null
      */
     protected function verificarFirmaJwt(string $jwt): ?array
+    {
+        $claims = $this->decodificarIdTokenFirmado($jwt);
+
+        if ($claims !== null) {
+            return $claims;
+        }
+
+        // La llave del realm pudo ROTAR con el JWKS cacheado todavía viejo: se
+        // descarta la caché y se reintenta UNA vez contra el JWKS fresco. Sin este
+        // reintento, una rotación de llaves dejaría el login cortado hasta que
+        // venciera la caché (una hora). Si tampoco así valida, la firma no es
+        // buena: el login se corta (ver claimsDelIdToken).
+        Cache::forget('keycloak_jwks');
+
+        return $this->decodificarIdTokenFirmado($jwt);
+    }
+
+    /**
+     * Decodifica el id_token verificando su firma contra el JWKS cacheado del realm.
+     *
+     * @return array<string,mixed>|null
+     */
+    private function decodificarIdTokenFirmado(string $jwt): ?array
     {
         try {
             $jwks = Cache::remember('keycloak_jwks', now()->addHour(), function (): array {

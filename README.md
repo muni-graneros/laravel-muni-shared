@@ -85,6 +85,29 @@ de dominio: `discapacidades()` en disc, `puestos()` en feria), y el modelo
 `OnboardingTour` con su Resource y su controlador (mismo motivo). Implementan
 los contratos de este paquete.
 
+### SSO: la firma del `id_token` se verifica, o el login no entra
+
+El callback de `KeycloakSsoController` verifica la FIRMA del `id_token` contra
+el JWKS del realm antes de creerse ninguna claim. Si la firma no valida —el
+JWKS caído, la llave del realm rotada, o un token manipulado— el login se
+**corta** con un 503 y nadie queda adentro. OIDC (Core 3.1.3.7) manda lo
+contrario de lo que hacía antes esta base: si la firma no se puede validar, el
+`id_token` no se acepta.
+
+Antes de este cambio, esa verificación era «defensa en profundidad»: si fallaba,
+el login se caía a *decodificar sin firma* y **se aceptaba**. Eso convertía un
+fallo de verificación en un login válido, justo en la ventana en que alguien
+intentaría colarse.
+
+El JWKS se cachea una hora, y en esa hora el realm puede rotar la llave de
+firma. Para que una rotación no deje el login cortado, cuando la verificación
+falla se descarta la caché y se reintenta **una vez** contra el JWKS fresco; si
+tampoco así valida, el login se corta.
+
+| Clave | Por defecto | Para qué |
+|---|---|---|
+| `services.keycloak.permitir_id_token_sin_firma` | `false` | Puerta de escape: acepta el `id_token` **sin** firma verificada. Apagada por defecto; préndela solo a propósito, con el IdP caído, y vuelve a apagarla |
+
 ## Qué hace el provider al instalarse
 
 `Muni\Shared\MuniSharedServiceProvider` se autodescubre y **cablea solo**, sin
