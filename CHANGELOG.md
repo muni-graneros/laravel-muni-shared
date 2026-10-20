@@ -9,6 +9,23 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+## [1.23.1] - 2026-10-19
+
+Parche: sin migraciones, sin configuración nueva, sin cambios de API.
+
+### Corregido
+- **`privacidad:cifrar-texto-libre --ejecutar` ya no pisa lo que el sistema guarda mientras corre.**
+  El comando lee de a 500 filas y reescribe fila por fila; el UPDATE iba solo por `id`, así que
+  un valor guardado entre la lectura del lote y el UPDATE (una resolución, un levantamiento de
+  bloqueo) se reemplazaba por el texto viejo cifrado y el cambio se perdía sin aviso. Ahora el
+  UPDATE va condicionado al valor leído en cada columna que reescribe: la fila que cambió se
+  salta y la salida informa cuántas (sin su contenido, que es dato personal); volver a correr el
+  comando las cifra. Además, `--ejecutar` toma el candado `privacidad:cifrar-texto-libre` (store de
+  caché por defecto, vence a la hora): una segunda corrida simultánea termina con error y no
+  toca nada. La simulación no toma el candado.
+- La línea de resumen con `--ejecutar` cambia de `N fila(s) con texto libre en claro cifradas.`
+  a `N fila(s) con texto libre en claro, M cifrada(s).`. Quien parsee esa salida debe ajustarlo.
+
 ## [1.23.0] - 2026-10-16
 
 Pone número de versión a lo que `control-acceso-graneros`, `discapacidad-graneros`,
