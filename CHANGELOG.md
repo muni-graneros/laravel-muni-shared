@@ -9,7 +9,9 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
-Versión sugerida: **1.23.1** (patch). Sin migraciones, sin configuración nueva, sin cambios de API.
+## [1.23.1] - 2026-10-19
+
+Parche: sin migraciones, sin configuración nueva, sin cambios de API.
 
 ### Corregido
 - **`privacidad:cifrar-texto-libre --ejecutar` ya no pisa lo que el sistema guarda mientras corre.**
