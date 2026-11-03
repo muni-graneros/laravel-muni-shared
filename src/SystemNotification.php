@@ -12,7 +12,9 @@ use Illuminate\Notifications\Notification;
  * Centraliza el canal por defecto (correo) y un constructor de MailMessage ya
  * "marcado" con el saludo y la firma institucional. Las subclases solo aportan
  * el asunto y la vista Markdown con el contenido — el logo, los colores y el
- * pie salen del tema "graneros" (config/mail.php → resources/views/vendor/mail).
+ * pie los pone el paquete (`Muni\Shared\Correo\PlantillaInstitucional`), no el
+ * `resources/views/vendor/mail` de cada sistema: esa copia era de cada app y
+ * hacía que el correo saliera distinto según el sistema que lo mandara.
  *
  * Para que una notificación se procese en segundo plano (cola Redis del worker)
  * basta con que la subclase implemente Illuminate\Contracts\Queue\ShouldQueue.
