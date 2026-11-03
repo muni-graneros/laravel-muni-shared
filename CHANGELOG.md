@@ -9,6 +9,13 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+## [1.24.0] - 2026-11-03
+
+Menor: sin migraciones. Configuración nueva opcional (`MUNI_CORREO_SISTEMA`, `MUNI_CORREO_UNIDAD`).
+**Al subir, todos los correos Markdown del sistema cambian de aspecto**: la plantilla del paquete reemplaza a la de
+`resources/views/vendor/mail`. Un test del sistema que busque el logo por URL o un pie propio va a fallar (ver
+«Correo institucional» en el README).
+
 ### Añadido
 
 - **Plantilla de correo institucional única.** Todo correo Markdown de un sistema que
