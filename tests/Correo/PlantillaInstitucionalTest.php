@@ -84,7 +84,7 @@ it('un correo con ->line() sale con la cabecera, la franja, el botón y el pie i
     expect(franjaDe($html))->toBe(FRANJA_INSTITUCIONAL);
 });
 
-it('el nombre configurado del sistema manda sobre APP_NAME y la unidad aparece en el pie', function () {
+it('el nombre configurado del sistema manda sobre APP_NAME en la cabecera y el título, y la unidad aparece en el pie', function () {
     config([
         'correo-institucional.sistema' => 'Licencias de Conducir',
         'correo-institucional.unidad' => 'Dirección de Tránsito',
@@ -93,8 +93,13 @@ it('el nombre configurado del sistema manda sobre APP_NAME y la unidad aparece e
     $html = (string) correoDePrueba()->render();
 
     expect($html)
+        ->toContain('<title>Licencias de Conducir</title>')
+        // La despedida la pone la plantilla de CONTENIDO —la del framework o la
+        // de la app—, que el paquete ya no manda: ahí puede quedar el nombre
+        // interno del sistema (APP_NAME). En las partes institucionales —la
+        // cabecera y el título— manda el nombre configurado.
+        ->not->toMatch('/Sistema de Prueba\s*<\/div>/')
         ->toContain('Licencias de Conducir')
-        ->not->toContain('Sistema de Prueba')
         ->toContain('Dirección de Tránsito');
 });
 

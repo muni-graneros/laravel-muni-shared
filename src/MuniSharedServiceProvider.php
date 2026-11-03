@@ -85,7 +85,6 @@ class MuniSharedServiceProvider extends ServiceProvider
 
         $this->registrarCorreoPorGraph();
         $this->agendarRetencion();
-        $this->plantillaDeNotificaciones();
 
         // El logo viaja incrustado en el correo (cid:), no por URL: lo
         // adjunta el listener justo antes de enviar, y solo si la plantilla
@@ -175,26 +174,6 @@ class MuniSharedServiceProvider extends ServiceProvider
                 'mail.markdown.theme' => PlantillaInstitucional::TEMA,
                 'mail.markdown.paths' => $rutas,
             ]);
-        });
-    }
-
-    /**
-     * La plantilla de las notificaciones (`notifications::email`) es del paquete.
-     *
-     * La del framework termina la despedida con `config('app.name')`: el correo
-     * decía «Regards, Sistema de Prueba» debajo de un logo que dice
-     * «Municipalidad de Graneros». Con la del paquete la despedida usa el
-     * nombre institucional configurado en `correo-institucional.sistema`, y los
-     * dos dicen lo mismo.
-     *
-     * Va por delante de la del framework (`prependNamespace`) y no con
-     * `loadViewsFrom`, porque `loadViewsFrom` AGREGA la ruta al final y la del
-     * framework ya estaba: el framework ganaría.
-     */
-    private function plantillaDeNotificaciones(): void
-    {
-        $this->callAfterResolving('view', function ($view): void {
-            $view->prependNamespace('notifications', __DIR__.'/../resources/views/notifications');
         });
     }
 

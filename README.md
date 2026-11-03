@@ -185,7 +185,7 @@ con el cuadrito de imagen rota en el correo de cada vecino.
 
 | Variable | Para qué | Por defecto |
 |---|---|---|
-| `MUNI_CORREO_SISTEMA` | Nombre que va bajo el logo y en la despedida del correo | `APP_NAME` |
+| `MUNI_CORREO_SISTEMA` | Nombre que va bajo el logo y en el título del correo | `APP_NAME` |
 | `MUNI_CORREO_UNIDAD` | Unidad municipal del pie (p. ej. «Dirección de Tránsito»). Vacío = sin unidad | vacío |
 
 La tercera clave, `correo-institucional.sitio`, apunta al sitio municipal y no
@@ -201,6 +201,15 @@ Las vistas del paquete se registran **por delante** de las rutas de
 - y sigue ganando aunque el sistema fije su configuración **después** de que los
   providers se registren, porque se aplica al resolver el renderer de Markdown, no
   al leer el `config/`.
+
+### Lo que el paquete NO toca
+
+La plantilla `notifications::email` —el contenido de las notificaciones de correo:
+saludo, líneas y despedida— es **de cada sistema**, no del paquete. El paquete no
+registra ninguna vista propia para `notifications`, así que el sistema puede
+sobreescribirla a su gusto (atencionvecino lo hace para no mostrar la URL exacta
+del requerimiento en el aviso de respaldo) sin que el paquete se lo imponga. La
+marca institucional va en `mail::message`, que sí es del paquete.
 
 ### Pasos de adopción en cada sistema
 
