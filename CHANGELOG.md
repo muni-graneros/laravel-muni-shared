@@ -9,6 +9,22 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+### Añadido
+
+- **Plantilla de correo institucional única.** Todo correo Markdown de un sistema que
+  instale este paquete sale con el logo de la Municipalidad incrustado (`cid:`, no por URL:
+  hay sistemas que solo se ven por VPN y la imagen remota no carga en el cliente), el
+  nombre del sistema, la franja de siete colores, el petróleo `#355a63` en botones y
+  enlaces, y el pie institucional (unidad opcional, «Ilustre Municipalidad de Graneros»,
+  enlace al sitio y el aviso de correo automático). Reemplaza a los
+  `resources/views/vendor/mail` de cada sistema y a su `mail.markdown.theme` local: la
+  plantilla del paquete gana, y se aplica al resolver el renderer, así que una app que
+  fije su configuración después no se la impone. Config `correo-institucional`
+  (`MUNI_CORREO_SISTEMA`, `MUNI_CORREO_UNIDAD`, más `sitio`), fusionada desde el paquete.
+  Un `Mailable` con `->html()` o `->view()` crudo no pasa por Markdown y no recibe la
+  plantilla: hay que pasarlo a Markdown. Ver «Correo institucional» en el README para los
+  pasos de adopción por sistema.
+
 ## [1.23.1] - 2026-10-19
 
 Parche: sin migraciones, sin configuración nueva, sin cambios de API.

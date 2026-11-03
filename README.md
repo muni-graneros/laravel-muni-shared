@@ -72,7 +72,7 @@ Todo cuelga de `Muni\Shared\`.
 | `Imagen\` | `DecodificadorAcotado::preparar()` → `ImagenPreparada`: imagen subida por terceros con tope de bytes y de megapíxeles ANTES de GD, sólo JPEG/PNG/WebP por contenido, re-codificada sin metadatos, con sha256 del binario final | `ext-gd` (`suggest`) y `ext-fileinfo` |
 | `Persona\` | `PersonaDTO`, `PersonaResolverInterface`, `ApiPersonaResolver`, `MaestroPersonaService` (autocompletar por RUT contra el maestro), `WriteThrough\{SincronizarAlMaestro, Resincronizar, VerificarSincronizacion}` | — |
 | `Sso\` | `KeycloakSsoController` (OIDC Authorization Code contra la cuenta municipal) y `SsoClaims` | `firebase/php-jwt` |
-| `Correo\` | `TransporteGraph` (envío por Microsoft Graph) y `ConfiguracionDeCorreo` | — |
+| `Correo\` | `TransporteGraph` (envío por Microsoft Graph), `ConfiguracionDeCorreo`, `PlantillaInstitucional` (la plantilla de correo que gana sobre la de cada app) e `IncrustarLogoInstitucional` (adjunta el logo al enviar) | — |
 | `Health\` | `SaludEcosistema`: base de datos, Redis/cola y alcance del maestro en formato normalizado, ampliable con `conExtra()` | — |
 | `Privacidad\` | El módulo de la Ley 21.719 completo: ARCOP, bitácora, consentimientos, retención, brechas, bloqueos. **Ver [`docs/privacidad/modulo.md`](docs/privacidad/modulo.md)** | — |
 | `Auditoria\` | `RolePolicy`, `ActivityPolicy`, `Pages\ListActivitiesBase` | Filament + spatie (`suggest`) |
@@ -122,11 +122,17 @@ que el sistema escriba una línea:
   `mail.mailers.graph`, más `privacidad`, `credenciales-de-plantilla`,
   `datos-operativos` e `idempotencia`. Ningún sistema toca su `config/mail.php`: alcanza con
   `MAIL_MAILER=graph` y las credenciales en el `.env`.
+- **Fusiona `correo-institucional`** (el nombre del sistema y la unidad del pie del
+  correo institucional) y **fija la plantilla institucional** de correo, que gana sobre
+  el `resources/views/vendor/mail` y el `mail.markdown.theme` de cada sistema. Ver
+  «Correo institucional» más abajo.
 - **Enlaza dos contratos por defecto**, sustituibles:
   `RegistroDeEvidencia → BitacoraEnBaseDeDatos` y
   `ResuelveTitularesVencidos → NingunTitularVencido`.
 - **Registra el transporte de correo `graph`** (Laravel resuelve transportes por
   nombre al enviar, no al leer la configuración).
+- **Incrusta el logo institucional** en el correo que se está por enviar (y solo si
+  la plantilla lo referencia).
 - **Agenda la retención** con `withoutOverlapping()` + `onOneServer()` **solo si**
   el sistema declaró `privacidad.retencion.hora`. Sin esa clave no se agenda
   nada: instalar un paquete no puede poner a correr un destructivo en ocho
@@ -161,6 +167,52 @@ php artisan privacidad:cifrar-texto-libre [--ejecutar]
 Los dos con `--ejecutar` toman un candado (`Cache::lock`) y fallan con código
 distinto de cero si ya hay otra corrida en curso; la simulación no lo toma.
 Detalle en [`docs/privacidad/modulo.md`](docs/privacidad/modulo.md).
+
+## Correo institucional
+
+Todo el correo Markdown de un sistema que instale este paquete sale con la misma
+plantilla institucional: el logo de la Municipalidad **incrustado** (`cid:`, no por
+URL), el nombre del sistema, la franja de siete colores, el petróleo `#355a63` en
+botones y enlaces, y el pie con la unidad opcional, el sitio municipal y el aviso de
+correo automático. No hay que configurar nada para que funcione: el logo, el color y
+el pie los pone el paquete.
+
+El logo va incrustado y no por URL a propósito. Varios sistemas municipales solo se
+ven por VPN, y Gmail y Outlook bloquean las imágenes remotas: un logo por URL salía
+con el cuadrito de imagen rota en el correo de cada vecino.
+
+### Las dos variables de entorno
+
+| Variable | Para qué | Por defecto |
+|---|---|---|
+| `MUNI_CORREO_SISTEMA` | Nombre que va bajo el logo y en la despedida del correo | `APP_NAME` |
+| `MUNI_CORREO_UNIDAD` | Unidad municipal del pie (p. ej. «Dirección de Tránsito»). Vacío = sin unidad | vacío |
+
+La tercera clave, `correo-institucional.sitio`, apunta al sitio municipal y no
+depende del `.env`.
+
+### La plantilla gana
+
+Las vistas del paquete se registran **por delante** de las rutas de
+`mail.markdown.paths`, y el tema se fija en `graneros`. Eso significa que:
+
+- gana sobre el `resources/views/vendor/mail` del propio sistema;
+- gana sobre el `mail.markdown.theme` que el sistema tenga configurado;
+- y sigue ganando aunque el sistema fije su configuración **después** de que los
+  providers se registren, porque se aplica al resolver el renderer de Markdown, no
+  al leer el `config/`.
+
+### Pasos de adopción en cada sistema
+
+1. Subir el paquete (`composer update muni-graneros/laravel-muni-shared`).
+2. **Borrar** el `resources/views/vendor/mail` del sistema: quedó sin efecto, y
+   mientras exista da la impresión de que manda cuando no es así.
+3. Quitar el `'theme' => 'graneros'` local del `config/mail.php` del sistema.
+4. Fijar las dos variables en el `.env.example` del sistema (`MUNI_CORREO_SISTEMA` y
+   `MUNI_CORREO_UNIDAD`), y en el `.env` de cada ambiente.
+5. Si el sistema manda algún `Mailable` con `->html()` o `->view()` crudo, pasarlo a
+   Markdown (`->markdown(...)`): el `->html()` no pasa por el renderer y no recibe
+   la plantilla.
 
 ## Guarda de credenciales de plantilla (`Seguridad\CredencialesDePlantilla`)
 
