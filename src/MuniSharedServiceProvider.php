@@ -48,40 +48,7 @@ class MuniSharedServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/idempotencia.php', 'idempotencia');
         $this->mergeConfigFrom(__DIR__.'/../config/correo-institucional.php', 'correo-institucional');
 
-        // La plantilla institucional se aplica en la RESOLUCIÓN del renderer y
-        // no con `config()` acá adentro, por dos razones.
-        //
-        // La primera: la app puede fijar su `mail.markdown.theme` y su
-        // `mail.markdown.paths` después de que los providers se registran, y
-        // gana el que se registró después. Leyendo la configuración en el
-        // momento de resolver, gana la plantilla del paquete, que es lo que se
-        // quiere: el logo, el color y el pie son de la Municipalidad, no del
-        // sistema que manda el correo.
-        //
-        // La segunda: el renderer es un singleton. Configurarlo al resolverlo
-        // lo deja bien una vez y bien las veces que se vuelva a resolver (por
-        // ejemplo, con `config:cache`), sin duplicar rutas.
-        $this->app->afterResolving(Markdown::class, function (Markdown $markdown): void {
-            $rutas = array_values(array_unique(array_merge(
-                [PlantillaInstitucional::rutaComponentes()],
-                (array) config('mail.markdown.paths', []),
-            )));
-
-            // Las vistas del paquete van PRIMERO: `Markdown` usa la primera
-            // ruta que tenga el componente, así que así la plantilla
-            // institucional le gana a la `resources/views/vendor/mail` de cada
-            // app y a las del framework.
-            $markdown->loadComponentsFrom($rutas);
-            $markdown->theme(PlantillaInstitucional::TEMA);
-
-            // Y el config queda igual, porque hay caminos del framework que lo
-            // leen al enviar y no al resolver (el canal de correo de las
-            // notificaciones, por ejemplo).
-            config([
-                'mail.markdown.theme' => PlantillaInstitucional::TEMA,
-                'mail.markdown.paths' => $rutas,
-            ]);
-        });
+        $this->plantillaInstitucional();
 
         // Enlace por defecto: un sistema que ya tenga su propia trazabilidad
         // puede sustituirlo sin tocar el módulo.
@@ -113,25 +80,7 @@ class MuniSharedServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
         if ($this->app->runningInConsole()) {
-            $this->publishes([
-                __DIR__.'/../config/privacidad.php' => config_path('privacidad.php'),
-            ], 'privacidad-config');
-
-            $this->publishes([
-                __DIR__.'/../config/credenciales-de-plantilla.php' => config_path('credenciales-de-plantilla.php'),
-            ], 'credenciales-de-plantilla-config');
-
-            $this->publishes([
-                __DIR__.'/../config/datos-operativos.php' => config_path('datos-operativos.php'),
-            ], 'datos-operativos-config');
-
-            $this->publishes([
-                __DIR__.'/../config/idempotencia.php' => config_path('idempotencia.php'),
-            ], 'idempotencia-config');
-
-            $this->publishes([
-                __DIR__.'/../stubs/privacidad' => base_path('docs/privacidad'),
-            ], 'privacidad-stubs');
+            $this->publicarConfiguraciones();
         }
 
         $this->registrarCorreoPorGraph();
@@ -155,6 +104,78 @@ class MuniSharedServiceProvider extends ServiceProvider
                 ExportarRatCommand::class,
             ]);
         }
+    }
+
+    /**
+     * Lo que el sistema puede publicar en su `config/` y en su `docs/`.
+     *
+     * Las migraciones NO se publican: se cargan. Publicar los archivos de
+     * configuración es opcional —el paquete los fusiona solo— y está para el
+     * sistema que los quiera versionar y editar a mano.
+     */
+    private function publicarConfiguraciones(): void
+    {
+        $this->publishes([
+            __DIR__.'/../config/privacidad.php' => config_path('privacidad.php'),
+        ], 'privacidad-config');
+
+        $this->publishes([
+            __DIR__.'/../config/credenciales-de-plantilla.php' => config_path('credenciales-de-plantilla.php'),
+        ], 'credenciales-de-plantilla-config');
+
+        $this->publishes([
+            __DIR__.'/../config/datos-operativos.php' => config_path('datos-operativos.php'),
+        ], 'datos-operativos-config');
+
+        $this->publishes([
+            __DIR__.'/../config/idempotencia.php' => config_path('idempotencia.php'),
+        ], 'idempotencia-config');
+
+        $this->publishes([
+            __DIR__.'/../stubs/privacidad' => base_path('docs/privacidad'),
+        ], 'privacidad-stubs');
+    }
+
+    /**
+     * La plantilla institucional de correo la pone el paquete, no cada sistema.
+     *
+     * Se aplica en la RESOLUCIÓN del renderer y no con `config()` en el
+     * `register()`, por dos razones.
+     *
+     * La primera: la app puede fijar su `mail.markdown.theme` y su
+     * `mail.markdown.paths` después de que los providers se registran, y gana el
+     * que se registró después. Leyendo la configuración en el momento de
+     * resolver, gana la plantilla del paquete, que es lo que se quiere: el logo,
+     * el color y el pie son de la Municipalidad, no del sistema que manda el
+     * correo.
+     *
+     * La segunda: el renderer es un singleton. Configurarlo al resolverlo lo
+     * deja bien una vez y bien las veces que se vuelva a resolver (por ejemplo,
+     * con `config:cache`), sin duplicar rutas.
+     */
+    private function plantillaInstitucional(): void
+    {
+        $this->app->afterResolving(Markdown::class, function (Markdown $markdown): void {
+            $rutas = array_values(array_unique(array_merge(
+                [PlantillaInstitucional::rutaComponentes()],
+                (array) config('mail.markdown.paths', []),
+            )));
+
+            // Las vistas del paquete van PRIMERO: `Markdown` usa la primera
+            // ruta que tenga el componente, así que así la plantilla
+            // institucional le gana a la `resources/views/vendor/mail` de cada
+            // app y a las del framework.
+            $markdown->loadComponentsFrom($rutas);
+            $markdown->theme(PlantillaInstitucional::TEMA);
+
+            // Y el config queda igual, porque hay caminos del framework que lo
+            // leen al enviar y no al resolver (el canal de correo de las
+            // notificaciones, por ejemplo).
+            config([
+                'mail.markdown.theme' => PlantillaInstitucional::TEMA,
+                'mail.markdown.paths' => $rutas,
+            ]);
+        });
     }
 
     /**
