@@ -3,12 +3,14 @@
 namespace Muni\Shared;
 
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Mail\Markdown;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\ServiceProvider;
 use Muni\Shared\Console\ConfigurarCorreoCommand;
 use Muni\Shared\Console\LimpiarDatosOperativosCommand;
 use Muni\Shared\Console\MuniDocsCommand;
 use Muni\Shared\Console\ProbarCorreoCommand;
+use Muni\Shared\Correo\PlantillaInstitucional;
 use Muni\Shared\Correo\TransporteGraph;
 use Muni\Shared\Privacidad\BitacoraEnBaseDeDatos;
 use Muni\Shared\Privacidad\Console\AplicarRetencionCommand;
@@ -41,6 +43,42 @@ class MuniSharedServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/credenciales-de-plantilla.php', 'credenciales-de-plantilla');
         $this->mergeConfigFrom(__DIR__.'/../config/datos-operativos.php', 'datos-operativos');
         $this->mergeConfigFrom(__DIR__.'/../config/idempotencia.php', 'idempotencia');
+        $this->mergeConfigFrom(__DIR__.'/../config/correo-institucional.php', 'correo-institucional');
+
+        // La plantilla institucional se aplica en la RESOLUCIÓN del renderer y
+        // no con `config()` acá adentro, por dos razones.
+        //
+        // La primera: la app puede fijar su `mail.markdown.theme` y su
+        // `mail.markdown.paths` después de que los providers se registran, y
+        // gana el que se registró después. Leyendo la configuración en el
+        // momento de resolver, gana la plantilla del paquete, que es lo que se
+        // quiere: el logo, el color y el pie son de la Municipalidad, no del
+        // sistema que manda el correo.
+        //
+        // La segunda: el renderer es un singleton. Configurarlo al resolverlo
+        // lo deja bien una vez y bien las veces que se vuelva a resolver (por
+        // ejemplo, con `config:cache`), sin duplicar rutas.
+        $this->app->afterResolving(Markdown::class, function (Markdown $markdown): void {
+            $rutas = array_values(array_unique(array_merge(
+                [PlantillaInstitucional::rutaComponentes()],
+                (array) config('mail.markdown.paths', []),
+            )));
+
+            // Las vistas del paquete van PRIMERO: `Markdown` usa la primera
+            // ruta que tenga el componente, así que así la plantilla
+            // institucional le gana a la `resources/views/vendor/mail` de cada
+            // app y a las del framework.
+            $markdown->loadComponentsFrom($rutas);
+            $markdown->theme(PlantillaInstitucional::TEMA);
+
+            // Y el config queda igual, porque hay caminos del framework que lo
+            // leen al enviar y no al resolver (el canal de correo de las
+            // notificaciones, por ejemplo).
+            config([
+                'mail.markdown.theme' => PlantillaInstitucional::TEMA,
+                'mail.markdown.paths' => $rutas,
+            ]);
+        });
 
         // Enlace por defecto: un sistema que ya tenga su propia trazabilidad
         // puede sustituirlo sin tocar el módulo.
@@ -95,6 +133,7 @@ class MuniSharedServiceProvider extends ServiceProvider
 
         $this->registrarCorreoPorGraph();
         $this->agendarRetencion();
+        $this->plantillaDeNotificaciones();
 
         if ($this->app->runningInConsole()) {
             $this->commands([
@@ -108,6 +147,26 @@ class MuniSharedServiceProvider extends ServiceProvider
                 ExportarRatCommand::class,
             ]);
         }
+    }
+
+    /**
+     * La plantilla de las notificaciones (`notifications::email`) es del paquete.
+     *
+     * La del framework termina la despedida con `config('app.name')`: el correo
+     * decía «Regards, Sistema de Prueba» debajo de un logo que dice
+     * «Municipalidad de Graneros». Con la del paquete la despedida usa el
+     * nombre institucional configurado en `correo-institucional.sistema`, y los
+     * dos dicen lo mismo.
+     *
+     * Va por delante de la del framework (`prependNamespace`) y no con
+     * `loadViewsFrom`, porque `loadViewsFrom` AGREGA la ruta al final y la del
+     * framework ya estaba: el framework ganaría.
+     */
+    private function plantillaDeNotificaciones(): void
+    {
+        $this->callAfterResolving('view', function ($view): void {
+            $view->prependNamespace('notifications', __DIR__.'/../resources/views/notifications');
+        });
     }
 
     /**
