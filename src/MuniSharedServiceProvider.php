@@ -3,6 +3,7 @@
 namespace Muni\Shared;
 
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\View\Factory as ViewFactory;
 use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Mail\Markdown;
 use Illuminate\Support\Facades\Event;
@@ -85,6 +86,7 @@ class MuniSharedServiceProvider extends ServiceProvider
 
         $this->registrarCorreoPorGraph();
         $this->agendarRetencion();
+        $this->plantillaDeNotificaciones();
 
         // El logo viaja incrustado en el correo (cid:), no por URL: lo
         // adjunta el listener justo antes de enviar, y solo si la plantilla
@@ -175,6 +177,101 @@ class MuniSharedServiceProvider extends ServiceProvider
                 'mail.markdown.paths' => $rutas,
             ]);
         });
+    }
+
+    /**
+     * La plantilla de notificaciones del paquete va DETRÁS de la de la app.
+     *
+     * `notifications::email` es el CONTENIDO del correo de una notificación:
+     * el saludo, las líneas, el botón y la despedida. La marca institucional
+     * (logo, franja, color y pie) ya la pone `mail::message`, que sí es del
+     * paquete. El contenido es de cada sistema: su idioma, sus palabras y sus
+     * datos.
+     *
+     * Por eso la plantilla del paquete va en el medio, no adelante: la de la
+     * app gana, y la del framework —que está en inglés— va última.
+     *
+     *   1. `resources/views/vendor/notifications` de la app, si existe,
+     *   2. `resources/views/notifications` del paquete,
+     *   3. la del framework.
+     *
+     * El primer paso es el que importa: atencionvecino sobrescribe esa
+     * plantilla para no mostrar la URL del requerimiento en el aviso de
+     * respaldo. Ese control de privacidad no puede quedar en manos del
+     * paquete, y por eso la plantilla del paquete NO se registra como una
+     * vista más de la app.
+     *
+     * Se aplica al resolver la vista, y no al registrar el provider, porque
+     * el framework registra la suya en su `boot()`: hay que correr después que
+     * él, no antes. Por lo mismo el callback va en `boot()` de este provider
+     * (los providers del framework se registran antes que los de los
+     * paquetes) y no en `register()`.
+     */
+    private function plantillaDeNotificaciones(): void
+    {
+        $this->callAfterResolving('view', function (ViewFactory $view): void {
+            $finder = $view->getFinder();
+
+            // El finder del framework (`Illuminate\View\FileViewFinder`) es el
+            // que sabe qué rutas hay para cada namespace. Se comprueba antes
+            // de usarlo: si una app lo cambiara por otro, el paquete no
+            // inventa un orden de búsqueda que no puede verificar, y la app
+            // sigue con su plantilla y la del framework.
+            if (! method_exists($finder, 'getHints')) {
+                return;
+            }
+
+            $hints = $finder->getHints()['notifications'] ?? [];
+
+            $rutas = $this->rutasDeNotificacionesDeLaApp();
+            $rutas[] = dirname(__DIR__).'/resources/views/notifications';
+
+            // Lo que ya estaba (la del framework, y la de la app si el
+            // framework la encontró) va después, sin repetir rutas.
+            foreach ($hints as $hint) {
+                if (! in_array($hint, $rutas, true)) {
+                    $rutas[] = $hint;
+                }
+            }
+
+            $finder->replaceNamespace('notifications', $rutas);
+        });
+    }
+
+    /**
+     * Las carpetas donde la app puede tener su propia plantilla de
+     * notificaciones.
+     *
+     * La del framework las busca en cada ruta de `config('view.paths')`, y
+     * por lo tanto en la de la app (`resources/views/vendor/notifications`).
+     * Se mira también esa ruta explícita para que el orden no dependa de que
+     * la app tenga `view.paths` configurado a mano.
+     *
+     * @return array<int, string>
+     */
+    private function rutasDeNotificacionesDeLaApp(): array
+    {
+        $rutas = [];
+
+        $candidatas = [resource_path('views/vendor/notifications')];
+
+        foreach ((array) config('view.paths', []) as $ruta) {
+            $candidatas[] = rtrim($ruta, '/').'/vendor/notifications';
+        }
+
+        foreach ($candidatas as $candidata) {
+            if (! is_dir($candidata)) {
+                continue;
+            }
+
+            $real = realpath($candidata) ?: $candidata;
+
+            if (! in_array($real, $rutas, true)) {
+                $rutas[] = $real;
+            }
+        }
+
+        return $rutas;
     }
 
     /**
