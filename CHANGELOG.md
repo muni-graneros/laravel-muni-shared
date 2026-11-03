@@ -9,6 +9,36 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+## [1.24.0] - 2026-11-03
+
+Menor: sin migraciones. Configuración nueva opcional (`MUNI_CORREO_SISTEMA`, `MUNI_CORREO_UNIDAD`).
+**Al subir, todos los correos Markdown del sistema cambian de aspecto**: la plantilla del paquete reemplaza a la de
+`resources/views/vendor/mail`. Un test del sistema que busque el logo por URL o un pie propio va a fallar (ver
+«Correo institucional» en el README).
+
+### Añadido
+
+- **Plantilla de correo institucional única.** Todo correo Markdown de un sistema que
+  instale este paquete sale con el logo de la Municipalidad incrustado (`cid:`, no por URL:
+  hay sistemas que solo se ven por VPN y la imagen remota no carga en el cliente), el
+  nombre del sistema, la franja de siete colores, el petróleo `#355a63` en botones y
+  enlaces, y el pie institucional (unidad opcional, «Ilustre Municipalidad de Graneros»,
+  enlace al sitio y el aviso de correo automático). Reemplaza a los
+  `resources/views/vendor/mail` de cada sistema y a su `mail.markdown.theme` local: la
+  plantilla del paquete gana, y se aplica al resolver el renderer, así que una app que
+  fije su configuración después no se la impone. Config `correo-institucional`
+  (`MUNI_CORREO_SISTEMA`, `MUNI_CORREO_UNIDAD`, más `sitio`), fusionada desde el paquete.
+  Un `Mailable` con `->html()` o `->view()` crudo no pasa por Markdown y no recibe la
+  plantilla: hay que pasarlo a Markdown. Ver «Correo institucional» en el README para los
+  pasos de adopción por sistema.
+- **Plantilla de notificaciones en español, detrás de la de cada sistema.** El contenido
+  del correo de una notificación (saludo, líneas, botón y despedida) es de cada sistema:
+  su idioma y sus palabras. El paquete trae la suya en español —con la despedida
+  institucional, «Saludos,» y el nombre configurado— pero como respaldo: el orden de
+  búsqueda es `resources/views/vendor/notifications` del sistema, la del paquete y la del
+  framework. La marca institucional (logo, franja, color y pie) sigue estando en
+  `mail::message`, que sí es del paquete.
+
 ## [1.23.1] - 2026-10-19
 
 Parche: sin migraciones, sin configuración nueva, sin cambios de API.

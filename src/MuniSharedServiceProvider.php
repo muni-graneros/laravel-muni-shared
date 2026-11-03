@@ -3,12 +3,18 @@
 namespace Muni\Shared;
 
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Contracts\View\Factory as ViewFactory;
+use Illuminate\Mail\Events\MessageSending;
+use Illuminate\Mail\Markdown;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\ServiceProvider;
 use Muni\Shared\Console\ConfigurarCorreoCommand;
 use Muni\Shared\Console\LimpiarDatosOperativosCommand;
 use Muni\Shared\Console\MuniDocsCommand;
 use Muni\Shared\Console\ProbarCorreoCommand;
+use Muni\Shared\Correo\IncrustarLogoInstitucional;
+use Muni\Shared\Correo\PlantillaInstitucional;
 use Muni\Shared\Correo\TransporteGraph;
 use Muni\Shared\Privacidad\BitacoraEnBaseDeDatos;
 use Muni\Shared\Privacidad\Console\AplicarRetencionCommand;
@@ -41,6 +47,9 @@ class MuniSharedServiceProvider extends ServiceProvider
         $this->mergeConfigFrom(__DIR__.'/../config/credenciales-de-plantilla.php', 'credenciales-de-plantilla');
         $this->mergeConfigFrom(__DIR__.'/../config/datos-operativos.php', 'datos-operativos');
         $this->mergeConfigFrom(__DIR__.'/../config/idempotencia.php', 'idempotencia');
+        $this->mergeConfigFrom(__DIR__.'/../config/correo-institucional.php', 'correo-institucional');
+
+        $this->plantillaInstitucional();
 
         // Enlace por defecto: un sistema que ya tenga su propia trazabilidad
         // puede sustituirlo sin tocar el módulo.
@@ -72,29 +81,17 @@ class MuniSharedServiceProvider extends ServiceProvider
         $this->loadMigrationsFrom(__DIR__.'/../database/migrations');
 
         if ($this->app->runningInConsole()) {
-            $this->publishes([
-                __DIR__.'/../config/privacidad.php' => config_path('privacidad.php'),
-            ], 'privacidad-config');
-
-            $this->publishes([
-                __DIR__.'/../config/credenciales-de-plantilla.php' => config_path('credenciales-de-plantilla.php'),
-            ], 'credenciales-de-plantilla-config');
-
-            $this->publishes([
-                __DIR__.'/../config/datos-operativos.php' => config_path('datos-operativos.php'),
-            ], 'datos-operativos-config');
-
-            $this->publishes([
-                __DIR__.'/../config/idempotencia.php' => config_path('idempotencia.php'),
-            ], 'idempotencia-config');
-
-            $this->publishes([
-                __DIR__.'/../stubs/privacidad' => base_path('docs/privacidad'),
-            ], 'privacidad-stubs');
+            $this->publicarConfiguraciones();
         }
 
         $this->registrarCorreoPorGraph();
         $this->agendarRetencion();
+        $this->plantillaDeNotificaciones();
+
+        // El logo viaja incrustado en el correo (cid:), no por URL: lo
+        // adjunta el listener justo antes de enviar, y solo si la plantilla
+        // lo referencia.
+        Event::listen(MessageSending::class, IncrustarLogoInstitucional::class);
 
         if ($this->app->runningInConsole()) {
             $this->commands([
@@ -108,6 +105,173 @@ class MuniSharedServiceProvider extends ServiceProvider
                 ExportarRatCommand::class,
             ]);
         }
+    }
+
+    /**
+     * Lo que el sistema puede publicar en su `config/` y en su `docs/`.
+     *
+     * Las migraciones NO se publican: se cargan. Publicar los archivos de
+     * configuración es opcional —el paquete los fusiona solo— y está para el
+     * sistema que los quiera versionar y editar a mano.
+     */
+    private function publicarConfiguraciones(): void
+    {
+        $this->publishes([
+            __DIR__.'/../config/privacidad.php' => config_path('privacidad.php'),
+        ], 'privacidad-config');
+
+        $this->publishes([
+            __DIR__.'/../config/credenciales-de-plantilla.php' => config_path('credenciales-de-plantilla.php'),
+        ], 'credenciales-de-plantilla-config');
+
+        $this->publishes([
+            __DIR__.'/../config/datos-operativos.php' => config_path('datos-operativos.php'),
+        ], 'datos-operativos-config');
+
+        $this->publishes([
+            __DIR__.'/../config/idempotencia.php' => config_path('idempotencia.php'),
+        ], 'idempotencia-config');
+
+        $this->publishes([
+            __DIR__.'/../stubs/privacidad' => base_path('docs/privacidad'),
+        ], 'privacidad-stubs');
+    }
+
+    /**
+     * La plantilla institucional de correo la pone el paquete, no cada sistema.
+     *
+     * Se aplica en la RESOLUCIÓN del renderer y no con `config()` en el
+     * `register()`, por dos razones.
+     *
+     * La primera: la app puede fijar su `mail.markdown.theme` y su
+     * `mail.markdown.paths` después de que los providers se registran, y gana el
+     * que se registró después. Leyendo la configuración en el momento de
+     * resolver, gana la plantilla del paquete, que es lo que se quiere: el logo,
+     * el color y el pie son de la Municipalidad, no del sistema que manda el
+     * correo.
+     *
+     * La segunda: el renderer es un singleton. Configurarlo al resolverlo lo
+     * deja bien una vez y bien las veces que se vuelva a resolver (por ejemplo,
+     * con `config:cache`), sin duplicar rutas.
+     */
+    private function plantillaInstitucional(): void
+    {
+        $this->app->afterResolving(Markdown::class, function (Markdown $markdown): void {
+            $rutas = array_values(array_unique(array_merge(
+                [PlantillaInstitucional::rutaComponentes()],
+                (array) config('mail.markdown.paths', []),
+            )));
+
+            // Las vistas del paquete van PRIMERO: `Markdown` usa la primera
+            // ruta que tenga el componente, así que así la plantilla
+            // institucional le gana a la `resources/views/vendor/mail` de cada
+            // app y a las del framework.
+            $markdown->loadComponentsFrom($rutas);
+            $markdown->theme(PlantillaInstitucional::TEMA);
+
+            // Y el config queda igual, porque hay caminos del framework que lo
+            // leen al enviar y no al resolver (el canal de correo de las
+            // notificaciones, por ejemplo).
+            config([
+                'mail.markdown.theme' => PlantillaInstitucional::TEMA,
+                'mail.markdown.paths' => $rutas,
+            ]);
+        });
+    }
+
+    /**
+     * La plantilla de notificaciones del paquete va DETRÁS de la de la app.
+     *
+     * `notifications::email` es el CONTENIDO del correo de una notificación:
+     * el saludo, las líneas, el botón y la despedida. La marca institucional
+     * (logo, franja, color y pie) ya la pone `mail::message`, que sí es del
+     * paquete. El contenido es de cada sistema: su idioma, sus palabras y sus
+     * datos.
+     *
+     * Por eso la plantilla del paquete va en el medio, no adelante: la de la
+     * app gana, y la del framework —que está en inglés— va última.
+     *
+     *   1. `resources/views/vendor/notifications` de la app, si existe,
+     *   2. `resources/views/notifications` del paquete,
+     *   3. la del framework.
+     *
+     * El primer paso es el que importa: atencionvecino sobrescribe esa
+     * plantilla para no mostrar la URL del requerimiento en el aviso de
+     * respaldo. Ese control de privacidad no puede quedar en manos del
+     * paquete, y por eso la plantilla del paquete NO se registra como una
+     * vista más de la app.
+     *
+     * Se aplica al resolver la vista, y no al registrar el provider, porque
+     * el framework registra la suya en su `boot()`: hay que correr después que
+     * él, no antes. Por lo mismo el callback va en `boot()` de este provider
+     * (los providers del framework se registran antes que los de los
+     * paquetes) y no en `register()`.
+     */
+    private function plantillaDeNotificaciones(): void
+    {
+        $this->callAfterResolving('view', function (ViewFactory $view): void {
+            $finder = $view->getFinder();
+
+            // El finder del framework (`Illuminate\View\FileViewFinder`) es el
+            // que sabe qué rutas hay para cada namespace. Se comprueba antes
+            // de usarlo: si una app lo cambiara por otro, el paquete no
+            // inventa un orden de búsqueda que no puede verificar, y la app
+            // sigue con su plantilla y la del framework.
+            if (! method_exists($finder, 'getHints')) {
+                return;
+            }
+
+            $hints = $finder->getHints()['notifications'] ?? [];
+
+            $rutas = $this->rutasDeNotificacionesDeLaApp();
+            $rutas[] = dirname(__DIR__).'/resources/views/notifications';
+
+            // Lo que ya estaba (la del framework, y la de la app si el
+            // framework la encontró) va después, sin repetir rutas.
+            foreach ($hints as $hint) {
+                if (! in_array($hint, $rutas, true)) {
+                    $rutas[] = $hint;
+                }
+            }
+
+            $finder->replaceNamespace('notifications', $rutas);
+        });
+    }
+
+    /**
+     * Las carpetas donde la app puede tener su propia plantilla de
+     * notificaciones.
+     *
+     * La del framework las busca en cada ruta de `config('view.paths')`, y
+     * por lo tanto en la de la app (`resources/views/vendor/notifications`).
+     * Se mira también esa ruta explícita para que el orden no dependa de que
+     * la app tenga `view.paths` configurado a mano.
+     *
+     * @return array<int, string>
+     */
+    private function rutasDeNotificacionesDeLaApp(): array
+    {
+        $rutas = [];
+
+        $candidatas = [resource_path('views/vendor/notifications')];
+
+        foreach ((array) config('view.paths', []) as $ruta) {
+            $candidatas[] = rtrim($ruta, '/').'/vendor/notifications';
+        }
+
+        foreach ($candidatas as $candidata) {
+            if (! is_dir($candidata)) {
+                continue;
+            }
+
+            $real = realpath($candidata) ?: $candidata;
+
+            if (! in_array($real, $rutas, true)) {
+                $rutas[] = $real;
+            }
+        }
+
+        return $rutas;
     }
 
     /**
