@@ -205,11 +205,18 @@ Las vistas del paquete se registran **por delante** de las rutas de
 ### Lo que el paquete NO toca
 
 La plantilla `notifications::email` —el contenido de las notificaciones de correo:
-saludo, líneas y despedida— es **de cada sistema**, no del paquete. El paquete no
-registra ninguna vista propia para `notifications`, así que el sistema puede
-sobreescribirla a su gusto (atencionvecino lo hace para no mostrar la URL exacta
-del requerimiento en el aviso de respaldo) sin que el paquete se lo imponga. La
-marca institucional va en `mail::message`, que sí es del paquete.
+saludo, líneas y despedida— es **de cada sistema**, no del paquete. El paquete
+registra la suya como respaldo, pero **detrás** de la del sistema: el orden de
+búsqueda es
+
+1. `resources/views/vendor/notifications` del sistema, si existe;
+2. la del paquete, en español y con la despedida institucional;
+3. la del framework, que está en inglés.
+
+Así el sistema puede sobreescribirla a su gusto (atencionvecino lo hace para no
+mostrar la URL exacta del requerimiento en el aviso de respaldo) sin que el
+paquete se lo imponga. La marca institucional va en `mail::message`, que sí es
+del paquete.
 
 ### Pasos de adopción en cada sistema
 
@@ -222,6 +229,8 @@ marca institucional va en `mail::message`, que sí es del paquete.
 5. Si el sistema manda algún `Mailable` con `->html()` o `->view()` crudo, pasarlo a
    Markdown (`->markdown(...)`): el `->html()` no pasa por el renderer y no recibe
    la plantilla.
+6. El `resources/views/vendor/notifications` del sistema **se deja**: sigue
+   mandando sobre la plantilla del paquete.
 
 ## Guarda de credenciales de plantilla (`Seguridad\CredencialesDePlantilla`)
 

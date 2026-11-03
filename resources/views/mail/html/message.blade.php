@@ -22,10 +22,11 @@
 <x-slot:footer>
 <x-mail::footer>
 @if (config('correo-institucional.unidad'))
-{{ config('correo-institucional.unidad') }} ·
+{{ config('correo-institucional.unidad') }} · Ilustre Municipalidad de Graneros<br>
+@else
+Ilustre Municipalidad de Graneros<br>
 @endif
-Ilustre Municipalidad de Graneros
-[{{ config('correo-institucional.sitio') }}]({{ config('correo-institucional.sitio') }})
+[{{ config('correo-institucional.sitio') }}]({{ config('correo-institucional.sitio') }})<br>
 Este es un correo automático, por favor no lo respondas.
 </x-mail::footer>
 </x-slot:footer>

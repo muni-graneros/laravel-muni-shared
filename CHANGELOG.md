@@ -24,6 +24,13 @@ Versionado: [SemVer](https://semver.org/lang/es/).
   Un `Mailable` con `->html()` o `->view()` crudo no pasa por Markdown y no recibe la
   plantilla: hay que pasarlo a Markdown. Ver «Correo institucional» en el README para los
   pasos de adopción por sistema.
+- **Plantilla de notificaciones en español, detrás de la de cada sistema.** El contenido
+  del correo de una notificación (saludo, líneas, botón y despedida) es de cada sistema:
+  su idioma y sus palabras. El paquete trae la suya en español —con la despedida
+  institucional, «Saludos,» y el nombre configurado— pero como respaldo: el orden de
+  búsqueda es `resources/views/vendor/notifications` del sistema, la del paquete y la del
+  framework. La marca institucional (logo, franja, color y pie) sigue estando en
+  `mail::message`, que sí es del paquete.
 
 ## [1.23.1] - 2026-10-19
 

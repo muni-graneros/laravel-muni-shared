@@ -22,6 +22,11 @@ use Symfony\Component\Mime\Part\File;
  */
 final class IncrustarLogoInstitucional
 {
+    /**
+     * @param  string|null  $rutaLogo  PNG a incrustar. `null` → el del paquete.
+     */
+    public function __construct(private readonly ?string $rutaLogo = null) {}
+
     public function handle(MessageSending $evento): void
     {
         $email = $evento->message;
@@ -36,7 +41,7 @@ final class IncrustarLogoInstitucional
             return;
         }
 
-        $ruta = PlantillaInstitucional::rutaLogo();
+        $ruta = $this->rutaLogo ?? PlantillaInstitucional::rutaLogo();
 
         // El correo sale igual, sin logo. Un logo que no se ve es un detalle;
         // un correo que no sale es un vecino sin el código de acceso.
