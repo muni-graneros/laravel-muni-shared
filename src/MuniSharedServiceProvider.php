@@ -3,13 +3,16 @@
 namespace Muni\Shared;
 
 use Illuminate\Console\Scheduling\Schedule;
+use Illuminate\Mail\Events\MessageSending;
 use Illuminate\Mail\Markdown;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\ServiceProvider;
 use Muni\Shared\Console\ConfigurarCorreoCommand;
 use Muni\Shared\Console\LimpiarDatosOperativosCommand;
 use Muni\Shared\Console\MuniDocsCommand;
 use Muni\Shared\Console\ProbarCorreoCommand;
+use Muni\Shared\Correo\IncrustarLogoInstitucional;
 use Muni\Shared\Correo\PlantillaInstitucional;
 use Muni\Shared\Correo\TransporteGraph;
 use Muni\Shared\Privacidad\BitacoraEnBaseDeDatos;
@@ -134,6 +137,11 @@ class MuniSharedServiceProvider extends ServiceProvider
         $this->registrarCorreoPorGraph();
         $this->agendarRetencion();
         $this->plantillaDeNotificaciones();
+
+        // El logo viaja incrustado en el correo (cid:), no por URL: lo
+        // adjunta el listener justo antes de enviar, y solo si la plantilla
+        // lo referencia.
+        Event::listen(MessageSending::class, IncrustarLogoInstitucional::class);
 
         if ($this->app->runningInConsole()) {
             $this->commands([
