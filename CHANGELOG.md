@@ -39,6 +39,16 @@ Menor: sin migraciones. Configuración nueva opcional (`MUNI_CORREO_SISTEMA`, `M
   framework. La marca institucional (logo, franja, color y pie) sigue estando en
   `mail::message`, que sí es del paquete.
 
+### Seguridad (rompe)
+
+- **El SSO exige la firma verificada del `id_token`** (302179e, CWE-347). Antes, si la verificación contra el JWKS
+  del realm fallaba, el callback decodificaba el token sin firma y lo aceptaba. Ahora el login se corta con **503**.
+  Ante un fallo descarta la caché del JWKS y reintenta una vez, así que una rotación de llaves no lo deja cortado.
+  **Al subir:** el sistema tiene que alcanzar el JWKS de Keycloak, y los tests que simulan el callback con un JWKS
+  falso o un `id_token` sin firmar van a fallar: hay que firmarlos de verdad, como hicieron feria-graneros y
+  licencias-graneros. La puerta de escape `services.keycloak.permitir_id_token_sin_firma` viene apagada y **no**
+  debe encenderse en producción.
+
 ## [1.23.1] - 2026-10-19
 
 Parche: sin migraciones, sin configuración nueva, sin cambios de API.
