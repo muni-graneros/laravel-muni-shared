@@ -105,4 +105,21 @@ describe('plazos legales y retención', function () {
             expect($leer(configDePrivacidadConEntorno([$variable => '7']), $clave))->toBe(7, $variable);
         }
     });
+
+    it('el lote y el candado no aceptan cero, negativos ni decimales', function () use ($leer) {
+        // Un lote de 0 (o negativo) parte la publicación de constancias en un
+        // pedazo imposible; un candado de 0 s en Laravel no vence nunca
+        // (RedisLock/CacheLock sólo ponen expiración con `seconds > 0`) y una
+        // corrida muerta dejaría la retención parada para siempre. Un decimal
+        // truncado, además, es un valor que nadie escribió.
+        foreach ([
+            'PRIVACIDAD_RETENCION_LOTE' => ['retencion.lote', 100],
+            'PRIVACIDAD_RETENCION_CANDADO_SEGUNDOS' => ['retencion.candado_segundos', 21600],
+        ] as $variable => [$clave, $porOmision]) {
+            foreach (['0', '-1', '1.5', 'texto'] as $valor) {
+                expect($leer(configDePrivacidadConEntorno([$variable => $valor]), $clave))
+                    ->toBe($porOmision, $variable.'='.var_export($valor, true));
+            }
+        }
+    });
 });

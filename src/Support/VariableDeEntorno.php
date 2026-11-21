@@ -40,8 +40,15 @@ final class VariableDeEntorno
     }
 
     /**
-     * Entero: vacío, en blanco o no numérico = valor por omisión. Un `0`
-     * explícito sí manda.
+     * Entero: sólo un `int` o una cadena escrita EXACTAMENTE como entero.
+     *
+     * Antes se aceptaba cualquier `is_numeric()`, y eso dejaba pasar valores que
+     * nadie escribió: `true` se volvía 1, `1.5` se truncaba a 1, `'1e2'` a 100
+     * y `' 7 '` a 7. En un plazo de retención, un 1 donde el operador quiso
+     * decir otra cosa no es un detalle: el módulo cuenta meses. Un decimal
+     * truncado es un valor que nadie redactó, así que se rechaza.
+     *
+     * Un `0` explícito sí manda: el cero es un entero escrito como entero.
      */
     public static function entero(mixed $valor, int $porOmision): int
     {
@@ -49,11 +56,28 @@ final class VariableDeEntorno
             return $valor;
         }
 
-        if (! is_scalar($valor) || ! is_numeric(trim((string) $valor))) {
+        if (! is_string($valor) || preg_match('/\A-?[0-9]+\z/D', $valor) !== 1) {
             return $porOmision;
         }
 
-        return (int) trim((string) $valor);
+        return (int) $valor;
+    }
+
+    /**
+     * Entero mayor que cero: lo que no llega a 1 (cero, negativo, o un valor
+     * que no es un entero) vale la omisión.
+     *
+     * Para lo que no puede ser cero ni negativo: el lote de publicación de
+     * constancias y la vigencia del candado. Un candado de 0 s en Laravel no
+     * vence nunca (RedisLock/CacheLock sólo ponen expiración con
+     * `seconds > 0`), así que una corrida muerta dejaría la retención parada
+     * para siempre.
+     */
+    public static function enteroPositivo(mixed $valor, int $porOmision): int
+    {
+        $entero = self::entero($valor, $porOmision);
+
+        return $entero < 1 ? $porOmision : $entero;
     }
 
     /**
