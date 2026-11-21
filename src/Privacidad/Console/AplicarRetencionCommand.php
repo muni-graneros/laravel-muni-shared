@@ -75,10 +75,9 @@ class AplicarRetencionCommand extends Command
 
     private function correr(AplicarRetencion $retencion, bool $simulacion): int
     {
-        // Antes de la corrida y no después: si hay finalidades con un plazo
-        // que no retiene, el operador tiene que enterarse aunque la corrida
-        // haga su trabajo sobre las demás. Avisar al final, o no avisar, deja
-        // creyendo que se miró todo lo declarado.
+        // Antes de la corrida: si hay finalidades con un plazo que no retiene,
+        // el operador tiene que enterarse aunque la corrida haga su trabajo
+        // sobre las demás. Avisar al final deja creyendo que se miró todo.
         $this->avisarSiHayPlazosInvalidos();
 
         $resumen = $retencion->ejecutar($simulacion);

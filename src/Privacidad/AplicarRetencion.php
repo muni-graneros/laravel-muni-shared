@@ -43,12 +43,8 @@ class AplicarRetencion
         $finalidades = Finalidad::query()
             ->delSistema((string) config('privacidad.sistema'))
             ->where('activa', true)
-            // Mayor que cero, y no «no nulo»: una finalidad con plazo 0 es
-            // una declaración que no sirve, y el resolvedor la calcularía como
-            // «vencida hace 0 meses», o sea, prácticamente todo el padrón.
-            // Con esa finalidad en la intersección, la corrida suprime gente
-            // que ninguna finalidad válida declaraba vencida. Nulo y negativo
-            // son el mismo caso: un plazo de retención que no retiene.
+            // Mayor que cero, y no «no nulo»: un plazo de 0 (o nulo, o negativo)
+            // no retiene, y el resolvedor lo calcularía como «vencida hace 0 meses».
             ->where('plazo_retencion_meses', '>', 0)
             ->get();
 
@@ -68,10 +64,9 @@ class AplicarRetencion
 
         // La intersección: vencida en TODAS las finalidades con plazo. El conteo
         // se compara contra la cantidad de finalidades RECORRIDAS, no contra las
-        // del sistema: una finalidad sin plazo (`sincronizacion_maestro`) no
-        // conserva a nadie, y contarla dejaría la intersección vacía para
-        // siempre. Lo mismo pasa con un plazo que no retiene (0 o negativo):
-        // tampoco se recorre, y por lo tanto tampoco cuenta.
+        // del sistema: una finalidad sin plazo (`sincronizacion_maestro`) o con
+        // un plazo que no retiene (0) no conserva a nadie, y contarla dejaría la
+        // intersección vacía para siempre.
         $suprimibles = array_keys(array_filter($conteo, fn (int $n): bool => $n === $finalidades->count()));
 
         $plazos = $finalidades->pluck('plazo_retencion_meses', 'codigo')
