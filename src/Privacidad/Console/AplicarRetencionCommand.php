@@ -201,9 +201,11 @@ class AplicarRetencionCommand extends Command
             fn (Finalidad $finalidad): string => $finalidad->codigo.'='.$this->describirPlazo($finalidad->plazo_retencion_meses)
         )->implode(', ');
 
-        $this->warn('Se omitieron finalidades con plazo_retencion_meses inválido (debe ser un entero mayor que cero):');
-        $this->warn("  {$detalle}");
-        $this->warn('  En esas finalidades no se tocaron sus titulares.');
+        $this->warn(implode(PHP_EOL, [
+            'Se omitieron finalidades con plazo_retencion_meses inválido (debe ser un entero mayor que cero):',
+            "  {$detalle}",
+            '  En esas finalidades no se tocaron sus titulares.',
+        ]));
     }
 
     /** El plazo, tal como quedó declarado, para que el aviso lo muestre. */

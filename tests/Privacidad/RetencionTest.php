@@ -166,9 +166,11 @@ it('omite una finalidad con plazo cero y avisa sin tocar titulares', function ()
     $this->finalidad->update(['plazo_retencion_meses' => 0]);
 
     $this->artisan('privacidad:aplicar-retencion --ejecutar')
-        ->expectsOutputToContain('plazo_retencion_meses inválido')
-        ->expectsOutputToContain('atencion')
-        ->expectsOutputToContain('no se tocaron sus titulares')
+        ->expectsOutputToContain(implode(PHP_EOL, [
+            'Se omitieron finalidades con plazo_retencion_meses inválido (debe ser un entero mayor que cero):',
+            '  atencion=0',
+            '  En esas finalidades no se tocaron sus titulares.',
+        ]))
         ->assertSuccessful();
 
     expect($this->vencida->refresh()->nombre)->toBe('Rocío Paredes')
@@ -180,9 +182,11 @@ it('omite una finalidad con plazo nulo y avisa sin tocar titulares', function ()
     $this->finalidad->update(['plazo_retencion_meses' => null]);
 
     $this->artisan('privacidad:aplicar-retencion --ejecutar')
-        ->expectsOutputToContain('plazo_retencion_meses inválido')
-        ->expectsOutputToContain('atencion')
-        ->expectsOutputToContain('no se tocaron sus titulares')
+        ->expectsOutputToContain(implode(PHP_EOL, [
+            'Se omitieron finalidades con plazo_retencion_meses inválido (debe ser un entero mayor que cero):',
+            '  atencion=sin plazo',
+            '  En esas finalidades no se tocaron sus titulares.',
+        ]))
         ->assertSuccessful();
 
     expect($this->vencida->refresh()->nombre)->toBe('Rocío Paredes')
@@ -198,9 +202,11 @@ it('omite una finalidad con plazo negativo y avisa sin tocar titulares', functio
     $this->finalidad->update(['plazo_retencion_meses' => -1]);
 
     $this->artisan('privacidad:aplicar-retencion --ejecutar')
-        ->expectsOutputToContain('plazo_retencion_meses inválido')
-        ->expectsOutputToContain('atencion')
-        ->expectsOutputToContain('no se tocaron sus titulares')
+        ->expectsOutputToContain(implode(PHP_EOL, [
+            'Se omitieron finalidades con plazo_retencion_meses inválido (debe ser un entero mayor que cero):',
+            '  atencion=-1',
+            '  En esas finalidades no se tocaron sus titulares.',
+        ]))
         ->assertSuccessful();
 
     expect($this->vencida->refresh()->nombre)->toBe('Rocío Paredes')
