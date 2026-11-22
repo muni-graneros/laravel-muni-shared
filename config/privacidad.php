@@ -125,7 +125,10 @@ return [
         // corrida. No es afinamiento: es lo que hace que una corrida
         // interrumpida deje evidencia de lo que alcanzó a hacer. La corrida real
         // murió por timeout con 10.131 personas anonimizadas y cero constancias.
-        'lote' => VariableDeEntorno::entero(env('PRIVACIDAD_RETENCION_LOTE'), 100),
+        // Cero, negativo o no entero (un decimal truncado es un valor que nadie
+        // escribió) valen la omisión: un lote de 0 parte la publicación en un
+        // pedazo imposible.
+        'lote' => VariableDeEntorno::enteroPositivo(env('PRIVACIDAD_RETENCION_LOTE'), 100),
 
         // Vigencia del candado que impide dos corridas simultáneas. Tiene que
         // ser mayor que la corrida más larga esperable: la real iba a ~17
@@ -133,8 +136,9 @@ return [
         // para el caso en que el proceso muera sin soltarlo. Vacía no vale 0:
         // un candado de 0 s en Laravel no vence nunca (RedisLock/CacheLock sólo
         // ponen expiración con `seconds > 0`) y una corrida muerta dejaría la
-        // retención parada para siempre.
-        'candado_segundos' => VariableDeEntorno::entero(env('PRIVACIDAD_RETENCION_CANDADO_SEGUNDOS'), 21600),
+        // retención parada para siempre. Negativo o no entero, tampoco: sólo
+        // un entero mayor que cero es una vigencia.
+        'candado_segundos' => VariableDeEntorno::enteroPositivo(env('PRIVACIDAD_RETENCION_CANDADO_SEGUNDOS'), 21600),
     ],
 
     // Datos del responsable del tratamiento, que van en el RAT y en las
