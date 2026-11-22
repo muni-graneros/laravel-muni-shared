@@ -11,6 +11,7 @@ use Muni\Shared\Privacidad\NingunTitularVencido;
 use Muni\Shared\Privacidad\SupresionSoloLocal;
 use Muni\Shared\Tests\Privacidad\Fixtures\PersonaDePrueba;
 use Muni\Shared\Tests\Privacidad\Fixtures\UsuarioDePrueba;
+use Muni\Shared\Tests\TestCase;
 
 beforeEach(function () {
     config(['privacidad.sistema' => 'discapacidad']);
@@ -159,6 +160,58 @@ it('ignora finalidades sin plazo de retención', function () {
 
     expect(app(AplicarRetencion::class)->ejecutar(simulacion: false)->sinNadaQueRevisar())->toBeTrue();
     expect($this->vencida->refresh()->diagnostico)->toBe('dato sensible de salud');
+});
+
+it('omite una finalidad con plazo cero y avisa sin tocar titulares', function () {
+    $this->finalidad->update(['plazo_retencion_meses' => 0]);
+
+    $this->artisan('privacidad:aplicar-retencion --ejecutar')
+        ->expectsOutputToContain(implode(PHP_EOL, [
+            'Se omitieron finalidades con plazo_retencion_meses inválido (debe ser un entero mayor que cero):',
+            '  atencion=0',
+            '  En esas finalidades no se tocaron sus titulares.',
+        ]))
+        ->assertSuccessful();
+
+    expect($this->vencida->refresh()->nombre)->toBe('Rocío Paredes')
+        ->and($this->vencida->diagnostico)->toBe('dato sensible de salud')
+        ->and(EntradaBitacora::count())->toBe(0);
+});
+
+it('omite una finalidad con plazo nulo y avisa sin tocar titulares', function () {
+    $this->finalidad->update(['plazo_retencion_meses' => null]);
+
+    $this->artisan('privacidad:aplicar-retencion --ejecutar')
+        ->expectsOutputToContain(implode(PHP_EOL, [
+            'Se omitieron finalidades con plazo_retencion_meses inválido (debe ser un entero mayor que cero):',
+            '  atencion=sin plazo',
+            '  En esas finalidades no se tocaron sus titulares.',
+        ]))
+        ->assertSuccessful();
+
+    expect($this->vencida->refresh()->nombre)->toBe('Rocío Paredes')
+        ->and($this->vencida->diagnostico)->toBe('dato sensible de salud')
+        ->and(EntradaBitacora::count())->toBe(0);
+});
+
+it('omite una finalidad con plazo negativo y avisa sin tocar titulares', function () {
+    if (TestCase::hayMariaDb()) {
+        $this->markTestSkipped('La columna unsigned no permite insertar negativos en MariaDB.');
+    }
+
+    $this->finalidad->update(['plazo_retencion_meses' => -1]);
+
+    $this->artisan('privacidad:aplicar-retencion --ejecutar')
+        ->expectsOutputToContain(implode(PHP_EOL, [
+            'Se omitieron finalidades con plazo_retencion_meses inválido (debe ser un entero mayor que cero):',
+            '  atencion=-1',
+            '  En esas finalidades no se tocaron sus titulares.',
+        ]))
+        ->assertSuccessful();
+
+    expect($this->vencida->refresh()->nombre)->toBe('Rocío Paredes')
+        ->and($this->vencida->diagnostico)->toBe('dato sensible de salud')
+        ->and(EntradaBitacora::count())->toBe(0);
 });
 
 it('ignora finalidades inactivas', function () {

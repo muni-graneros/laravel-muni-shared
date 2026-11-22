@@ -152,3 +152,80 @@ it('con una sola finalidad con plazo la intersección es esa finalidad', functio
     expect($this->aMedioCamino->refresh()->nombre)->toBe('ANONIMIZADO')
         ->and($this->terminada->refresh()->nombre)->toBe('ANONIMIZADO');
 });
+
+it('finalidades con plazo inválido no alteran la intersección de las válidas', function () {
+    // Una finalidad con plazo 0 es una declaración que no sirve: el resolvedor
+    // la calcularía como «vencida hace 0 meses», o sea, prácticamente todo el
+    // padrón. Entra en la intersección y la ensancha, o la deja vacía según de
+    // dónde se mire. Lo que no puede es cambiar lo que se suprime.
+    Finalidad::create([
+        'sistema' => 'discapacidad',
+        'codigo' => 'sin_plazo',
+        'nombre' => 'Finalidad con plazo inválido',
+        'base_licitud' => BaseLicitud::FuncionLegal,
+        'norma_habilitante' => 'Ley 20.422',
+        'plazo_retencion_meses' => 0,
+    ]);
+    Finalidad::create([
+        'sistema' => 'discapacidad',
+        'codigo' => 'sin_plazo_nulo',
+        'nombre' => 'Finalidad sin plazo',
+        'base_licitud' => BaseLicitud::FuncionLegal,
+        'norma_habilitante' => 'Ley 20.422',
+        'plazo_retencion_meses' => null,
+    ]);
+
+    $recibidas = [];
+    app()->bind(ResuelveTitularesVencidos::class, function () use (&$recibidas) {
+        return new class($recibidas) implements ResuelveTitularesVencidos
+        {
+            /** @var array<int, string> */
+            private array $recibidas;
+
+            /** @param array<int, string> $recibidas */
+            public function __construct(array &$recibidas)
+            {
+                $this->recibidas = &$recibidas;
+            }
+
+            public function vencidos(Finalidad $finalidad): iterable
+            {
+                $this->recibidas[] = (string) $finalidad->codigo;
+
+                return PersonaDePrueba::query()
+                    ->whereNotNull('tratamiento_iniciado_en')
+                    ->where('tratamiento_iniciado_en', '<', now()->subMonths((int) $finalidad->plazo_retencion_meses))
+                    ->get();
+            }
+        };
+    });
+
+    $resumen = app(AplicarRetencion::class)->ejecutar(simulacion: true);
+
+    // La inválida ni se recorre ni cuenta para la intersección.
+    expect($resumen->porFinalidad)->toBe([
+        ['finalidad' => 'agenda_citas', 'titulares' => 2],
+        ['finalidad' => 'registro_comunal', 'titulares' => 1],
+    ])
+        ->and($resumen->finalidades)->toBe(['agenda_citas' => 24, 'registro_comunal' => 120])
+        ->and($resumen->suprimibles)->toBe(1);
+
+    expect(array_values(array_unique($recibidas)))->toBe(['agenda_citas', 'registro_comunal']);
+
+    // Y la corrida real anonimiza exactamente a quien vencía en las dos
+    // finalidades con plazo: ni una supresión de más ni una de menos.
+    app(AplicarRetencion::class)->ejecutar(simulacion: false);
+
+    expect($this->aMedioCamino->refresh()->nombre)->toBe('Rocío Paredes')
+        ->and($this->terminada->refresh()->nombre)->toBe('ANONIMIZADO');
+
+    // El aviso sale igual, aunque sí haya finalidades válidas: el operador
+    // tiene que saber que hay una declaración que no se está mirando.
+    $this->artisan('privacidad:aplicar-retencion')
+        ->expectsOutputToContain(implode(PHP_EOL, [
+            'Se omitieron finalidades con plazo_retencion_meses inválido (debe ser un entero mayor que cero):',
+            '  sin_plazo=0, sin_plazo_nulo=sin plazo',
+            '  En esas finalidades no se tocaron sus titulares.',
+        ]))
+        ->assertSuccessful();
+});

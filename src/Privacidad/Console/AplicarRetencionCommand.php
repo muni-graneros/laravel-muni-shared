@@ -5,6 +5,7 @@ namespace Muni\Shared\Privacidad\Console;
 use Illuminate\Console\Command;
 use Illuminate\Contracts\Cache\Factory as Cache;
 use Illuminate\Contracts\Cache\LockProvider;
+use Illuminate\Database\Eloquent\Builder;
 use Muni\Shared\Privacidad\AplicarRetencion;
 use Muni\Shared\Privacidad\Contratos\PropagaSupresion;
 use Muni\Shared\Privacidad\Contratos\ResuelveTitularesVencidos;
@@ -74,6 +75,11 @@ class AplicarRetencionCommand extends Command
 
     private function correr(AplicarRetencion $retencion, bool $simulacion): int
     {
+        // Antes de la corrida: si hay finalidades con un plazo que no retiene,
+        // el operador tiene que enterarse aunque la corrida haga su trabajo
+        // sobre las demás. Avisar al final deja creyendo que se miró todo.
+        $this->avisarSiHayPlazosInvalidos();
+
         $resumen = $retencion->ejecutar($simulacion);
 
         if ($resumen->sinNadaQueRevisar()) {
@@ -139,12 +145,12 @@ class AplicarRetencionCommand extends Command
         $conPlazo = Finalidad::query()
             ->delSistema($sistema)
             ->where('activa', true)
-            ->whereNotNull('plazo_retencion_meses')
+            ->where('plazo_retencion_meses', '>', 0)
             ->count();
 
         if ($conPlazo === 0) {
             $this->warn(
-                "El sistema «{$sistema}» no declaró ninguna finalidad vigente con plazo de retención: "
+                "El sistema «{$sistema}» no declaró ninguna finalidad vigente con plazo de retención válido: "
                 .'no se revisó nada. Sembrar las finalidades con su `plazo_retencion_meses`.',
             );
         }
@@ -155,6 +161,57 @@ class AplicarRetencionCommand extends Command
                 .'que nunca devuelve titulares): la retención NO está operativa.',
             );
         }
+    }
+
+    /**
+     * Finalidades declaradas con un plazo que no retiene: nulo, cero o
+     * negativo.
+     *
+     * Es un aviso aparte del de «no declaró ninguna finalidad» porque son dos
+     * cosas distintas: la primera dice que el sistema no tiene política de
+     * retención sembrada; esta dice que la tiene, pero con una declaración
+     * que no sirve. En la segunda, la corrida SÍ se hace, sobre las finalidades
+     * con plazo válido, y los titulares de la inválida no se tocan: se avisa
+     * justamente de eso, porque «se omitió» sin decir «a quién no se tocó»
+     * se lee como «se preservó por decisión».
+     *
+     * UN aviso, aunque sean varias finalidades: uno por finalidad convierte la
+     * pantalla en una lista que hay que leer entera. Sale en tres líneas porque
+     * cada una responde una pregunta distinta —qué pasó, cuáles, y qué
+     * significa para los titulares— y una línea por respuesta se lee (y se
+     * puede grepear) sin partir el texto.
+     */
+    private function avisarSiHayPlazosInvalidos(): void
+    {
+        $sistema = (string) config('privacidad.sistema');
+
+        $invalidas = Finalidad::query()
+            ->delSistema($sistema)
+            ->where('activa', true)
+            ->where(static fn (Builder $consulta): Builder => $consulta
+                ->whereNull('plazo_retencion_meses')
+                ->orWhere('plazo_retencion_meses', '<=', 0))
+            ->get(['codigo', 'plazo_retencion_meses']);
+
+        if ($invalidas->isEmpty()) {
+            return;
+        }
+
+        $detalle = $invalidas->map(
+            fn (Finalidad $finalidad): string => $finalidad->codigo.'='.$this->describirPlazo($finalidad->plazo_retencion_meses)
+        )->implode(', ');
+
+        $this->warn(implode(PHP_EOL, [
+            'Se omitieron finalidades con plazo_retencion_meses inválido (debe ser un entero mayor que cero):',
+            "  {$detalle}",
+            '  En esas finalidades no se tocaron sus titulares.',
+        ]));
+    }
+
+    /** El plazo, tal como quedó declarado, para que el aviso lo muestre. */
+    private function describirPlazo(?int $plazo): string
+    {
+        return $plazo === null ? 'sin plazo' : (string) $plazo;
     }
 
     /**

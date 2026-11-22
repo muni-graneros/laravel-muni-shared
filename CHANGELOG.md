@@ -9,6 +9,15 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+## [1.24.1] - 2026-11-22
+
+### Corregido
+
+- `VariableDeEntorno::entero()` ya no convierte en 0 un valor vacío, booleano, decimal o ilegible: devuelve el valor
+  de fábrica.
+- La retención de privacidad omite, y lo avisa, un plazo de retención inválido en vez de purgar con plazo 0: una
+  variable mal configurada ya no borra datos apenas vencen.
+
 ## [1.24.0] - 2026-11-03
 
 Menor: sin migraciones. Configuración nueva opcional (`MUNI_CORREO_SISTEMA`, `MUNI_CORREO_UNIDAD`).
