@@ -9,6 +9,17 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+## [1.25.0] - 2026-11-23
+
+Menor: sin migraciones ni configuración nueva.
+
+### Añadido
+
+- `Geocoder::inversa(float $lat, float $lng)`: de coordenadas a `['dir', 'label', 'comuna']`, o `null` si las
+  coordenadas son inválidas, el punto cae fuera de Chile, no hay calle o Nominatim no respondió (nunca lanza). A
+  Nominatim solo viajan las coordenadas redondeadas a 4 decimales (~11 m), comparte su límite de peticiones y los
+  logs no llevan coordenadas. Solo se cachean los aciertos (30 días).
+
 ## [1.24.1] - 2026-11-22
 
 ### Corregido
