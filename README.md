@@ -339,6 +339,14 @@ $r = Geocoder::buscarEstricto($direccion); // @throws GeocoderNoDisponible
 capturada. Ninguno de los dos cachea fallos; `sugerencias()` tampoco cachea la
 lista vacía que deja un fallo de red (antes la guardaba 12 horas).
 
+### Geocodificación inversa (`inversa()`)
+
+```php
+$r = Geocoder::inversa($lat, $lng); // ['dir' => 'Avenida Central 123', 'label' => '..., Graneros', 'comuna' => 'Graneros'] o null
+```
+
+Nunca lanza; coordenadas redondeadas a 4 decimales hacia Nominatim; solo cachea aciertos.
+
 ## Desarrollo
 
 ```bash

@@ -20,6 +20,8 @@ final class Geocoder
 {
     private const ENDPOINT = 'https://nominatim.openstreetmap.org/search';
 
+    private const REVERSE_ENDPOINT = 'https://nominatim.openstreetmap.org/reverse';
+
     private const USER_AGENT = 'SistemasMunicipalesGraneros/1.0 (https://municipalidadgraneros.cl)';
 
     // Photon (OSM) para autocompletado tipo Google Maps. Gratis y sin API key.
@@ -51,6 +53,45 @@ final class Geocoder
             // contrato de siempre.
             return null;
         }
+    }
+
+    /**
+     * Geocodificación inversa: de coordenadas a una dirección legible en Chile.
+     *
+     * Devuelve `null` si las coordenadas son inválidas (sin salir a la red), si
+     * Nominatim no pudo responder, si no hay calle/nombre o si el punto cae fuera
+     * de Chile. Nunca lanza hacia quien llama.
+     *
+     * Privacidad: a Nominatim solo viajan las coordenadas redondeadas a 4
+     * decimales (~11 m), que además mejora la tasa de aciertos de caché. Los
+     * logs no incluyen coordenadas ni el mensaje de la excepción. Solo se
+     * guardan en caché los aciertos. Comparte el límite de peticiones de
+     * Nominatim con el resto de la clase.
+     *
+     * @return array{dir: string, label: string, comuna: string}|null
+     */
+    public static function inversa(float $lat, float $lng): ?array
+    {
+        if (! is_finite($lat) || ! is_finite($lng) || $lat < -90 || $lat > 90 || $lng < -180 || $lng > 180) {
+            return null;
+        }
+
+        $lat4 = round($lat, 4);
+        $lng4 = round($lng, 4);
+
+        $clave = 'geocoder:inv:'.md5($lat4.','.$lng4);
+        $enCache = Cache::get($clave);
+        if (is_array($enCache)) {
+            /** @var array{dir: string, label: string, comuna: string} $enCache */
+            return $enCache;
+        }
+
+        $r = self::consultarInversa($lat4, $lng4);
+        if ($r !== null) {
+            Cache::put($clave, $r, now()->addDays(30));
+        }
+
+        return $r;
     }
 
     /**
@@ -267,6 +308,60 @@ final class Geocoder
         ]);
 
         return implode(', ', $partes);
+    }
+
+    /**
+     * Una consulta inversa a Nominatim. `null` ante cualquier fallo o si no hay dirección.
+     *
+     * @return array{dir: string, label: string, comuna: string}|null
+     */
+    private static function consultarInversa(float $lat, float $lng): ?array
+    {
+        if (RateLimiter::tooManyAttempts('geocoder:nominatim', 60)) {
+            Log::warning('Geocoder: límite de peticiones a Nominatim alcanzado; se omite la geocodificación inversa.');
+
+            return null;
+        }
+        RateLimiter::hit('geocoder:nominatim', 60);
+
+        try {
+            $respuesta = Http::withHeaders(['User-Agent' => self::USER_AGENT])
+                ->timeout(8)
+                ->get(self::REVERSE_ENDPOINT, [
+                    'format' => 'jsonv2',
+                    'lat' => $lat,
+                    'lon' => $lng,
+                    'zoom' => 18,
+                    'addressdetails' => 1,
+                    'accept-language' => 'es',
+                ]);
+        } catch (\Throwable $e) {
+            // Sin getMessage(): la URI de Guzzle lleva las coordenadas del vecino.
+            Log::warning('Geocoder: fallo de red al consultar Nominatim (inversa).', ['error' => $e::class]);
+
+            return null;
+        }
+
+        if (! $respuesta->ok()) {
+            Log::warning('Geocoder: respuesta no OK de Nominatim (inversa).', ['status' => $respuesta->status()]);
+
+            return null;
+        }
+
+        $a = $respuesta->json('address');
+        if (! is_array($a) || ($a['country_code'] ?? null) !== 'cl') {
+            return null;
+        }
+
+        $dir = trim((string) ($a['road'] ?? $a['pedestrian'] ?? $a['footway'] ?? $respuesta->json('name') ?? '').' '.(string) ($a['house_number'] ?? ''));
+        if ($dir === '') {
+            return null;
+        }
+
+        $comuna = (string) ($a['city'] ?? $a['town'] ?? $a['village'] ?? $a['municipality'] ?? $a['county'] ?? '');
+        $label = trim($dir.($comuna !== '' ? ', '.$comuna : ''));
+
+        return ['dir' => $dir, 'label' => $label, 'comuna' => $comuna];
     }
 
     /**
