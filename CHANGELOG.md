@@ -9,6 +9,15 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+Menor: sin migraciones ni configuración nueva.
+
+### Añadido
+
+- `Geocoder::sugerencias($q, $limite, ?string $comuna = null)`: el parámetro opcional `$comuna` acota las
+  sugerencias a esa comuna. El filtro se aplica en el servidor (sin tildes ni mayúsculas, contra
+  `city`/`district`/`locality`; la provincia no cuenta) y, para Graneros, el recuadro de la comuna se envía a
+  Photon. Sin el parámetro (o vacío) nada cambia: mismo pedido, misma caché.
+
 ## [1.25.0] - 2026-11-23
 
 Menor: sin migraciones ni configuración nueva.

@@ -6,6 +6,7 @@ use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Http;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\RateLimiter;
+use Illuminate\Support\Str;
 
 /**
  * Geocodificación con Nominatim (OpenStreetMap): convierte una dirección de texto
@@ -32,6 +33,9 @@ final class Geocoder
     private const GRANEROS_LAT = -34.0664;
 
     private const GRANEROS_LON = -70.7297;
+
+    // Recuadros conocidos por comuna normalizada: [minLon, minLat, maxLon, maxLat].
+    private const BBOX_COMUNAS = ['graneros' => [-70.9, -34.2, -70.6, -33.95]];
 
     /**
      * Busca coordenadas para una dirección dentro de Graneros, Chile.
@@ -146,24 +150,33 @@ final class Geocoder
      * Sesgadas a Graneros y filtradas a Chile. Cada sugerencia ya trae coordenadas,
      * así que al elegirla NO hace falta volver a geocodificar (resuelve precisión y UX).
      *
+     * Con `$comuna` las sugerencias se acotan a esa comuna: el filtro se aplica en
+     * el servidor (sin tildes ni mayúsculas, contra city/district/locality) y, si
+     * se conoce su recuadro, también se envía a Photon. Sin `$comuna` (o vacía)
+     * nada cambia respecto de antes.
+     *
      * @return list<array{valor: string, label: string}>
      */
-    public static function sugerencias(string $q, int $limite = 6): array
+    public static function sugerencias(string $q, int $limite = 6, ?string $comuna = null): array
     {
         $q = trim($q);
         if (mb_strlen($q) < 3) {
             return [];
         }
 
+        $comunaNorm = ($comuna !== null && trim($comuna) !== '') ? self::normalizarComuna($comuna) : null;
+
         // Caché por consulta normalizada: el type-ahead repite mucho los mismos prefijos.
-        $clave = 'geocoder:sug:'.md5(mb_strtolower($q));
+        $clave = $comunaNorm === null
+            ? 'geocoder:sug:'.md5(mb_strtolower($q))
+            : 'geocoder:sug:'.md5(mb_strtolower($q).'|'.$comunaNorm);
 
         $cacheadas = Cache::get($clave);
         if (is_array($cacheadas)) {
             return $cacheadas;
         }
 
-        $sugerencias = self::consultarPhoton($q, $limite);
+        $sugerencias = self::consultarPhoton($q, $limite, $comunaNorm);
 
         // Un fallo (red, error del proveedor, límite local) devuelve lista vacía
         // al que escribe, pero NO se guarda: cacheado 12 horas, un corte de un
@@ -200,7 +213,7 @@ final class Geocoder
      *
      * @return list<array{valor: string, label: string}>|null
      */
-    private static function consultarPhoton(string $q, int $limite): ?array
+    private static function consultarPhoton(string $q, int $limite, ?string $comunaNorm = null): ?array
     {
         // Etiqueta de uso responsable de Photon: tope ~120 consultas/min.
         if (RateLimiter::tooManyAttempts('geocoder:photon', 120)) {
@@ -210,17 +223,23 @@ final class Geocoder
         }
         RateLimiter::hit('geocoder:photon', 60);
 
+        $parametros = [
+            'q' => $q,
+            // pedimos de más para filtrar a Chile (y a la comuna) y quedarnos con $limite
+            'limit' => $comunaNorm === null ? $limite * 3 : $limite * 5,
+            // Sesgo por cercanía a Graneros: prioriza la zona PERO no la restringe,
+            // así también aparecen direcciones de todo Chile (Santiago, etc.).
+            'lat' => self::GRANEROS_LAT,
+            'lon' => self::GRANEROS_LON,
+        ];
+        if ($comunaNorm !== null && isset(self::BBOX_COMUNAS[$comunaNorm])) {
+            $parametros['bbox'] = implode(',', self::BBOX_COMUNAS[$comunaNorm]);
+        }
+
         try {
             $respuesta = Http::withHeaders(['User-Agent' => self::USER_AGENT])
                 ->timeout(6)
-                ->get(self::PHOTON_ENDPOINT, [
-                    'q' => $q,
-                    'limit' => $limite * 3, // pedimos de más para filtrar a Chile y quedarnos con $limite
-                    // Sesgo por cercanía a Graneros: prioriza la zona PERO no la restringe,
-                    // así también aparecen direcciones de todo Chile (Santiago, etc.).
-                    'lat' => self::GRANEROS_LAT,
-                    'lon' => self::GRANEROS_LON,
-                ]);
+                ->get(self::PHOTON_ENDPOINT, $parametros);
         } catch (\Throwable $e) {
             // La clase del fallo y no su mensaje: Guzzle lo arma con la URI, y
             // en la query va lo que el vecino está escribiendo.
@@ -251,6 +270,10 @@ final class Geocoder
                 continue;
             }
 
+            if ($comunaNorm !== null && ! self::perteneceAComuna($p, $comunaNorm)) {
+                continue;
+            }
+
             $ciudad = $p['city'] ?? $p['district'] ?? $p['county'] ?? '';
             $label = trim($calle.($ciudad !== '' ? ', '.$ciudad : ''));
             $lat = round((float) $coords[1], 7);
@@ -269,6 +292,29 @@ final class Geocoder
         }
 
         return $items;
+    }
+
+    /** Minúsculas y sin tildes: «' Machalí '» → «machali». */
+    private static function normalizarComuna(string $s): string
+    {
+        return Str::lower(Str::ascii(trim($s)));
+    }
+
+    /**
+     * ¿Alguno de city/district/locality coincide con la comuna? `county` (la
+     * provincia) no cuenta.
+     *
+     * @param  array<mixed>  $p  propiedades de la feature de Photon
+     */
+    private static function perteneceAComuna(array $p, string $comunaNorm): bool
+    {
+        foreach (['city', 'district', 'locality'] as $campo) {
+            if (isset($p[$campo]) && is_string($p[$campo]) && self::normalizarComuna($p[$campo]) === $comunaNorm) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /** Cascada de consultas (de más precisa a más aproximada). */
