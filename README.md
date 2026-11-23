@@ -347,6 +347,12 @@ $r = Geocoder::inversa($lat, $lng); // ['dir' => 'Avenida Central 123', 'label' 
 
 Nunca lanza; coordenadas redondeadas a 4 decimales hacia Nominatim; solo cachea aciertos.
 
+### Sugerencias acotadas a una comuna (`sugerencias()`)
+
+```php
+$s = Geocoder::sugerencias($q, 6, 'Graneros'); // solo direcciones de Graneros; sin el tercer parámetro, igual que antes
+```
+
 ## Desarrollo
 
 ```bash
