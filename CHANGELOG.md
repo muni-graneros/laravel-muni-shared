@@ -9,6 +9,8 @@ Versionado: [SemVer](https://semver.org/lang/es/).
 
 ## [Sin publicar]
 
+## [1.26.0] - 2026-11-23
+
 Menor: sin migraciones ni configuración nueva.
 
 ### Añadido
